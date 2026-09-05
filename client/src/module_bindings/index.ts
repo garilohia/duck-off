@@ -35,6 +35,7 @@ import {
 
 // Import all reducer arg schemas
 import JoinReducer from "./join_reducer";
+import StartRaceReducer from "./start_race_reducer";
 import TapReducer from "./tap_reducer";
 
 // Import all procedure arg schemas
@@ -44,6 +45,7 @@ import PlayerRow from "./player_table";
 import PresenceRow from "./presence_table";
 import RaceRow from "./race_table";
 import RacePlayerRow from "./race_player_table";
+import RaceResultRow from "./race_result_table";
 
 /** Type-only namespace exports for generated type groups. */
 
@@ -99,11 +101,26 @@ const tablesSchema = __schema({
       { name: 'race_player_identity_key', constraint: 'unique', columns: ['identity'] },
     ],
   }, RacePlayerRow),
+  raceResult: __table({
+    name: 'race_result',
+    indexes: [
+      { accessor: 'id', name: 'race_result_id_idx_btree', algorithm: 'btree', columns: [
+        'id',
+      ] },
+      { accessor: 'room', name: 'race_result_room_idx_btree', algorithm: 'btree', columns: [
+        'room',
+      ] },
+    ],
+    constraints: [
+      { name: 'race_result_id_key', constraint: 'unique', columns: ['id'] },
+    ],
+  }, RaceResultRow),
 });
 
 /** The schema information for all reducers in this module. This is defined the same way as the reducers would have been defined in the server, except the body of the reducer is omitted in code generation. */
 const reducersSchema = __reducers(
   __reducerSchema("join", JoinReducer),
+  __reducerSchema("start_race", StartRaceReducer),
   __reducerSchema("tap", TapReducer),
 );
 

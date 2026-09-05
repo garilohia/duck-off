@@ -55,6 +55,19 @@ export const RacePlayer = __t.object("RacePlayer", {
 });
 export type RacePlayer = __Infer<typeof RacePlayer>;
 
+export const RaceResult = __t.object("RaceResult", {
+  id: __t.string(),
+  room: __t.string(),
+  raceNumber: __t.u32(),
+  identity: __t.identity(),
+  name: __t.string(),
+  duckIndex: __t.u8(),
+  place: __t.u32(),
+  taps: __t.u32(),
+  pos: __t.f64(),
+});
+export type RaceResult = __Infer<typeof RaceResult>;
+
 export const RaceTick = __t.object("RaceTick", {
   scheduledId: __t.u64(),
   scheduledAt: __t.scheduleAt(),
