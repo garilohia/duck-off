@@ -35,6 +35,7 @@ import {
 
 // Import all reducer arg schemas
 import JoinReducer from "./join_reducer";
+import JoinRandomReducer from "./join_random_reducer";
 import StartRaceReducer from "./start_race_reducer";
 import TapReducer from "./tap_reducer";
 import UseItemReducer from "./use_item_reducer";
@@ -151,6 +152,7 @@ const tablesSchema = __schema({
 /** The schema information for all reducers in this module. This is defined the same way as the reducers would have been defined in the server, except the body of the reducer is omitted in code generation. */
 const reducersSchema = __reducers(
   __reducerSchema("join", JoinReducer),
+  __reducerSchema("join_random", JoinRandomReducer),
   __reducerSchema("start_race", StartRaceReducer),
   __reducerSchema("tap", TapReducer),
   __reducerSchema("use_item", UseItemReducer),

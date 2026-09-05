@@ -38,7 +38,7 @@ export const onDisconnect = stdb.clientDisconnected(ctx=>{
  // Keep the race roster and podium intact when a phone disconnects or sleeps.
  if(ctx.db.race.id.find(p?.room??'PUBLIC')?.status==='lobby')ctx.db.racePlayer.identity.delete(ctx.sender);
 });
-export const join = stdb.reducer({name:t.string(),duckIndex:t.u8(),room:t.string()},(ctx,{name,duckIndex,room})=>{
+function joinRoom(ctx:Ctx,name:string,duckIndex:number,room:string){
  if(duckIndex>7)throw new SenderError('Pick one of the eight ducks.');
  room=room.trim().toUpperCase()||'PUBLIC';
  if(!/^[A-Z0-9-]{1,16}$/.test(room))throw new SenderError('Use 1–16 letters, numbers, or hyphens for the room.');
@@ -56,6 +56,24 @@ export const join = stdb.reducer({name:t.string(),duckIndex:t.u8(),room:t.string
  if(existing?.room===room&&r.status!=='lobby')return;
  const row=lane(p,r.status==='lobby');
  if(ctx.db.racePlayer.identity.find(ctx.sender))ctx.db.racePlayer.identity.update(row);else ctx.db.racePlayer.insert(row);
+}
+export const join = stdb.reducer({name:t.string(),duckIndex:t.u8(),room:t.string()},(ctx,{name,duckIndex,room})=>joinRoom(ctx,name,duckIndex,room));
+export const joinRandom = stdb.reducer({name:t.string(),duckIndex:t.u8()},(ctx,{name,duckIndex})=>{
+ const current=ctx.db.racePlayer.identity.find(ctx.sender);
+ if(current?.active&&['countdown','racing'].includes(ctx.db.race.id.find(current.room)?.status??''))throw new SenderError('Finish this race before finding another room.');
+ // Match globally on the server so simultaneous clicks share the same live roster.
+ const candidates=[...ctx.db.race.iter()].map(r=>({race:r,count:[...ctx.db.player.room.filter(r.id)].filter(p=>p.online&&!p.identity.isEqual(ctx.sender)).length})).filter(r=>r.count>0&&r.count<12);
+ const waiting=candidates.filter(r=>r.race.status==='lobby'||r.race.status==='finished');
+ const pool=waiting.length?waiting:candidates;
+ let room:string;
+ if(pool.length){pool.sort((a,b)=>a.race.id<b.race.id?-1:1);room=pool[ctx.random.integerInRange(0,pool.length-1)].race.id;}
+ else{
+  const publicRoom=ctx.db.race.id.find('PUBLIC');
+  const publicCount=[...ctx.db.player.room.filter('PUBLIC')].filter(p=>p.online&&!p.identity.isEqual(ctx.sender)).length;
+  if((!publicRoom||publicRoom.status==='lobby')&&publicCount<12)room='PUBLIC';
+  else{do{room=`POND-${ctx.random.integerInRange(0,2176782335).toString(36).toUpperCase().padStart(6,'0')}`;}while(ctx.db.race.id.find(room));}
+ }
+ joinRoom(ctx,name,duckIndex,room);
 });
 export const startRace=stdb.reducer(ctx=>{
  const p=ctx.db.player.identity.find(ctx.sender);
