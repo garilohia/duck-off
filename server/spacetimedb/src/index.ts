@@ -1,10 +1,10 @@
 import { schema, table, t, SenderError, type ReducerCtx, type InferSchema } from 'spacetimedb/server';
-import { ScheduleAt, type Infer } from 'spacetimedb';
-import { DUCK_COUNT, MAX_DUCKS, LANES, TRACK, AUTO_CRUISE, CRUISE_SPEED, IMPACT, DRAFT_RANGE, DRAFT_BONUS, TACKLE_RANGE, travelSpeed, hitState, itemAt, weightedItem, trackLayout } from './items';
-const player = table({public:true},{identity:t.identity().primaryKey(),room:t.string().index('btree'),name:t.string(),duckIndex:t.u8(),online:t.bool(),racesWon:t.u32(),racesPlayed:t.u32()});
-const race = table({public:true},{id:t.string().primaryKey(),status:t.string(),phaseTicksLeft:t.u32(),finishCounter:t.u32(),raceNumber:t.u32(),winnerName:t.string(),winnerDuckIndex:t.u8(),idleTicks:t.u32(),forfeited:t.bool(),forfeitReason:t.string()});
-const racePlayer = table({public:true},{identity:t.identity().primaryKey(),room:t.string().index('btree'),name:t.string(),duckIndex:t.u8(),active:t.bool(),lane:t.u8(),pos:t.f64(),vel:t.f64(),taps:t.u32(),boostMeter:t.u32(),boostTicksLeft:t.u32(),place:t.u32(),rank:t.u32(),lastTapAt:t.u64(),drowned:t.bool()});
-const raceResult = table({public:true},{id:t.string().primaryKey(),room:t.string().index('btree'),raceNumber:t.u32(),identity:t.identity(),name:t.string(),duckIndex:t.u8(),place:t.u32(),taps:t.u32(),pos:t.f64(),drowned:t.bool()});
+import { ScheduleAt, type Infer, type Identity } from 'spacetimedb';
+import { DUCK_COUNT, MAX_DUCKS, LANES, TRACK, AUTO_CRUISE, CRUISE_SPEED, STALE_AFTER_MICROS, IMPACT, DRAFT_RANGE, DRAFT_BONUS, TACKLE_RANGE, travelSpeed, hitState, itemAt, weightedItem, trackLayout } from './items';
+const player = table({public:true},{identity:t.identity().primaryKey(),room:t.string().index('btree'),name:t.string(),duckIndex:t.u8(),online:t.bool(),racesWon:t.u32(),racesPlayed:t.u32(),lastSeen:t.timestamp()});
+const race = table({public:true},{id:t.string().primaryKey(),status:t.string(),phaseTicksLeft:t.u32(),finishCounter:t.u32(),raceNumber:t.u32(),winnerName:t.string(),winnerDuckIndex:t.u8(),idleTicks:t.u32(),forfeited:t.bool(),forfeitReason:t.string(),solo:t.bool()});
+const racePlayer = table({public:true},{identity:t.identity().primaryKey(),room:t.string().index('btree'),name:t.string(),duckIndex:t.u8(),active:t.bool(),lane:t.u8(),pos:t.f64(),vel:t.f64(),taps:t.u32(),boostMeter:t.u32(),boostTicksLeft:t.u32(),place:t.u32(),rank:t.u32(),lastTapAt:t.u64(),drowned:t.bool(),bonks:t.u32(),seconds:t.f64()});
+const raceResult = table({public:true},{id:t.string().primaryKey(),room:t.string().index('btree'),raceNumber:t.u32(),identity:t.identity(),name:t.string(),duckIndex:t.u8(),place:t.u32(),taps:t.u32(),pos:t.f64(),drowned:t.bool(),bonks:t.u32(),seconds:t.f64()});
 const raceItem = table({public:true},{identity:t.identity().primaryKey(),room:t.string().index('btree'),held:t.string(),slowTicks:t.u32(),shieldTicks:t.u32(),turboTicks:t.u32()});
 // Buoys and obstacles for the current race, laid out per lane so ducks have to steer.
 const raceFeature = table({public:true},{id:t.u64().primaryKey().autoInc(),room:t.string().index('btree'),kind:t.string(),lane:t.u8(),pos:t.f64(),seq:t.u32()});
@@ -15,16 +15,17 @@ const stdb = schema({player,race,racePlayer,raceResult,raceItem,itemEffect,raceF
 export default stdb;
 type Ctx = ReducerCtx<InferSchema<typeof stdb>>;
 type Racer = Infer<typeof racePlayer.rowType>;
-const lane = (p:Infer<typeof player.rowType>,active=true,laneIndex=2):Racer => ({identity:p.identity,room:p.room,name:p.name,duckIndex:p.duckIndex,active,lane:laneIndex,pos:0,vel:0,taps:0,boostMeter:0,boostTicksLeft:0,place:0,rank:0,lastTapAt:0n,drowned:false});
-const emptyRace=(id:string)=>({id,status:'lobby',phaseTicksLeft:0,finishCounter:0,raceNumber:1,winnerName:'',winnerDuckIndex:0,idleTicks:0,forfeited:false,forfeitReason:''});
+const lane = (p:Infer<typeof player.rowType>,active=true,laneIndex=2):Racer => ({identity:p.identity,room:p.room,name:p.name,duckIndex:p.duckIndex,active,lane:laneIndex,pos:0,vel:0,taps:0,boostMeter:0,boostTicksLeft:0,place:0,rank:0,lastTapAt:0n,drowned:false,bonks:0,seconds:0});
+const emptyRace=(id:string)=>({id,status:'lobby',phaseTicksLeft:0,finishCounter:0,raceNumber:1,winnerName:'',winnerDuckIndex:0,idleTicks:0,forfeited:false,forfeitReason:'',solo:false});
 // A race where nobody paddles or steers for this long is forfeited: no winner, no podium.
 const IDLE_FORFEIT_TICKS=150;
 // Stable identity order resolves exact distance / crossing-time ties on every client.
 function tie(a:Racer,b:Racer){const x=a.identity.toHexString(),y=b.identity.toHexString();return x<y?-1:x>y?1:0;}
 // Finishers first, then ducks still swimming by distance, then anyone the whirlpool took (also by distance).
 function standing(a:Racer,b:Racer){return a.place&&b.place?a.place-b.place:a.place?-1:b.place?1:a.drowned!==b.drowned?(a.drowned?1:-1):b.pos-a.pos||tie(a,b);}
+const RACE_TICKS=400;
 function award(ctx:Ctx,r:Infer<typeof race.rowType>,p:Racer){
- p.place=++r.finishCounter;
+ p.place=++r.finishCounter;p.seconds=(RACE_TICKS-r.phaseTicksLeft)/10;
  if(p.place===1){r.winnerName=p.name;r.winnerDuckIndex=p.duckIndex;const user=ctx.db.player.identity.find(p.identity);if(user&&!p.drowned)ctx.db.player.identity.update({...user,racesWon:user.racesWon+1});}
 }
 export const init = stdb.init(ctx=>{
@@ -33,8 +34,17 @@ export const init = stdb.init(ctx=>{
 });
 export const onConnect = stdb.clientConnected(ctx=>{
  if(ctx.connectionId){ctx.db.presence.connectionId.delete(ctx.connectionId);ctx.db.presence.insert({connectionId:ctx.connectionId,identity:ctx.sender});}
- const p=ctx.db.player.identity.find(ctx.sender);if(p)ctx.db.player.identity.update({...p,online:true});
+ const p=ctx.db.player.identity.find(ctx.sender);if(p)ctx.db.player.identity.update({...p,online:true,lastSeen:ctx.timestamp});
 });
+// Phones that sleep or lose signal keep their socket open for a while; a heartbeat every few seconds
+// tells the room the duck is really still here.
+export const heartbeat = stdb.reducer(ctx=>{
+ const p=ctx.db.player.identity.find(ctx.sender);if(!p)return;
+ ctx.db.player.identity.update({...p,online:true,lastSeen:ctx.timestamp});
+});
+function dropOffline(ctx:Ctx,identity:Identity,room:string){
+ if(ctx.db.race.id.find(room)?.status!=='racing'&&ctx.db.race.id.find(room)?.status!=='countdown')ctx.db.racePlayer.identity.delete(identity);
+}
 export const onDisconnect = stdb.clientDisconnected(ctx=>{
  if(ctx.connectionId)ctx.db.presence.connectionId.delete(ctx.connectionId);
  if([...ctx.db.presence.iter()].some(p=>p.identity.isEqual(ctx.sender)))return;
@@ -55,7 +65,7 @@ function joinRoom(ctx:Ctx,name:string,duckIndex:number,room:string){
   ctx.db.racePlayer.identity.delete(ctx.sender);
  }
  if(!ctx.db.race.id.find(room))ctx.db.race.insert(emptyRace(room));
- const p={identity:ctx.sender,room,name:name.trim().replace(/[\u0000-\u001f]/g,'').slice(0,14)||'Duck',duckIndex,online:true,racesWon:old?.racesWon??0,racesPlayed:old?.racesPlayed??0};
+ const p={identity:ctx.sender,room,name:name.trim().replace(/[\u0000-\u001f]/g,'').slice(0,14)||'Duck',duckIndex,online:true,racesWon:old?.racesWon??0,racesPlayed:old?.racesPlayed??0,lastSeen:ctx.timestamp};
  if(old)ctx.db.player.identity.update(p);else ctx.db.player.insert(p);
  const r=ctx.db.race.id.find(room)!;
  // Cosmetic edits never reset progress or change the recorded finisher's name.
@@ -102,10 +112,11 @@ export const startRace=stdb.reducer(ctx=>{
  const rows=[...ctx.db.player.room.filter(p.room)].filter(user=>user.online).map(user=>lane(user)).sort(tie);
  rows.forEach((row,i)=>ctx.db.racePlayer.insert({...row,rank:i+1,lane:i%LANES}));
  rows.forEach(row=>{ctx.db.raceItem.identity.delete(row.identity);ctx.db.raceItem.insert({identity:row.identity,room:p.room,held:'',slowTicks:0,shieldTicks:0,turboTicks:0});});
- const raceNumber=current.raceNumber+(current.status==='finished'?1:0);
+ const raceNumber=current.raceNumber+(current.status==='finished'?1:0),solo=rows.length===1;
  for(const f of ctx.db.raceFeature.room.filter(p.room))ctx.db.raceFeature.id.delete(f.id);
- for(const f of trackLayout(raceNumber))ctx.db.raceFeature.insert({id:0n,room:p.room,...f});
- ctx.db.race.id.update({...emptyRace(p.room),status:'countdown',phaseTicksLeft:30,raceNumber});
+ // A fresh seed every race, so nobody can memorise where the whirlpool sits.
+ for(const f of trackLayout(ctx.random.integerInRange(0,1_000_000_000),solo))ctx.db.raceFeature.insert({id:0n,room:p.room,...f});
+ ctx.db.race.id.update({...emptyRace(p.room),status:'countdown',phaseTicksLeft:30,raceNumber,solo});
 });
 // Hop one lane left (-1) or right (+1). Allowed from the countdown so ducks can line up.
 export const switchLane = stdb.reducer({direction:t.i8()},(ctx,{direction})=>{
@@ -157,6 +168,8 @@ export const useItem = stdb.reducer(ctx=>{
 });
 export const tick = stdb.reducer({onSchedule:raceTick},{arg:raceTick.rowType},ctx=>{
  if(!ctx.sender.isEqual(ctx.identity))throw new SenderError('Only the river clock can tick.');
+ // Ducks whose phone went quiet stop counting as here; a lobby or podium lets them go, a live race keeps their lane.
+ for(const p of ctx.db.player.iter())if(p.online&&ctx.timestamp.microsSinceUnixEpoch-p.lastSeen.microsSinceUnixEpoch>STALE_AFTER_MICROS){ctx.db.player.identity.update({...p,online:false});dropOffline(ctx,p.identity,p.room);}
  for(const current of ctx.db.race.iter()){
   const room=current.id;
   // An empty waiting room can be reclaimed. Active races and results survive disconnection.
@@ -216,7 +229,7 @@ export const tick = stdb.reducer({onSchedule:raceTick},{arg:raceTick.rowType},ct
       if(f.kind==='buoy'){if(!state.held){let held=weightedItem(itemAt(lanes.get(p.identity.toHexString())??0,r.raceNumber,f.seq),p.rank,racers.length);if(racers.length===1)held=held==='bomb'?'turbo':held==='bubble'?'shield':held;state.held=held;}}
       else if(f.kind==='rapids'){p.vel=Math.min(260,p.vel+45);p.boostTicksLeft=Math.max(p.boostTicksLeft,15);}
       else if(f.kind==='whirlpool'){if(state.shieldTicks>0)state.shieldTicks=0;else{p.drowned=true;p.vel=0;p.boostTicksLeft=0;state.held='';break;}}
-      else{const before=state.shieldTicks;state={...state,...hitState(state,f.kind)};if(!before)p.vel*=IMPACT[f.kind]?.keep??.5;}
+      else{const before=state.shieldTicks;state={...state,...hitState(state,f.kind)};if(!before){p.vel*=IMPACT[f.kind]?.keep??.5;p.bonks++;}}
      }
      ctx.db.raceItem.identity.update({...item,...state});
     }
@@ -226,7 +239,8 @@ export const tick = stdb.reducer({onSchedule:raceTick},{arg:raceTick.rowType},ct
    r.idleTicks=swimming.length&&swimming.every(p=>speed(p)<1)?r.idleTicks+1:0;
    // No podium when there is nothing to crown: everyone left, nobody crossed and the whirlpool got the rest,
    // or the whole field sat still for 15 seconds. Ducks that already crossed keep their places.
-   const forfeit=!r.finishCounter&&(!racers.length?'empty':racers.every(p=>p.drowned)?'drowned':r.idleTicks>=IDLE_FORFEIT_TICKS?'idle':'');
+   // A solo run is never forfeited for standing still; it is a practice course and simply waits.
+   const forfeit=!r.finishCounter&&(!racers.length?'empty':racers.every(p=>p.drowned)?'drowned':r.idleTicks>=IDLE_FORFEIT_TICKS&&racers.length>1?'idle':'');
    if(forfeit){
     r.status='finished';r.forfeited=true;r.forfeitReason=forfeit;r.phaseTicksLeft=0;r.winnerName='';
     racers.forEach((p,i)=>ctx.db.racePlayer.identity.update({...p,rank:i+1,vel:0}));
@@ -235,7 +249,7 @@ export const tick = stdb.reducer({onSchedule:raceTick},{arg:raceTick.rowType},ct
    if(r.phaseTicksLeft===0||racers.every(p=>p.place>0||p.drowned)){
     for(const p of racers)if(!p.place)award(ctx,r,p);
     r.status='finished';r.phaseTicksLeft=0;
-    for(const p of racers)ctx.db.raceResult.insert({id:`${room}:${r.raceNumber}:${p.identity.toHexString()}`,room,raceNumber:r.raceNumber,identity:p.identity,name:p.name,duckIndex:p.duckIndex,place:p.place,taps:p.taps,pos:p.pos,drowned:p.drowned});
+    for(const p of racers)ctx.db.raceResult.insert({id:`${room}:${r.raceNumber}:${p.identity.toHexString()}`,room,raceNumber:r.raceNumber,identity:p.identity,name:p.name,duckIndex:p.duckIndex,place:p.place,taps:p.taps,pos:p.pos,drowned:p.drowned,bonks:p.bonks,seconds:p.seconds});
    }
    racers.forEach((p,i)=>ctx.db.racePlayer.identity.update({...p,rank:i+1,vel:r.status==='finished'?0:p.vel}));
   }

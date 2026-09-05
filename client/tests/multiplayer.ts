@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import {DbConnection} from '../src/module_bindings';
 import {AUTO_CRUISE} from '../../server/spacetimedb/src/items';
 const sleep=(ms:number)=>new Promise(r=>setTimeout(r,ms));
+// Every test client heartbeats like the app does, so the 12-second staleness sweep never drops it.
+const beats:ReturnType<typeof setInterval>[]=[];
 const clients:DbConnection[]=[];
 // Ten racers plus two late joiners fill a room to its twelve-duck cap.
 const RACERS=10;
@@ -9,7 +11,7 @@ const room=process.env.TEST_ROOM??`T-${Date.now().toString(36).toUpperCase()}`;
 const uri=process.env.TEST_STDB_URI??'ws://127.0.0.1:3030',database=process.env.TEST_STDB_MODULE??'duckoff-mobile';
 async function connect(name:string,i:number,selectedRoom=room,join=true){return new Promise<DbConnection>((resolve,reject)=>{
  const timer=setTimeout(()=>reject(Error('Connection timed out')),20000);
- DbConnection.builder().withCompression('none').withUri(uri).withDatabaseName(database).onConnect(c=>{clients.push(c);c.subscriptionBuilder().onApplied(()=>{void(async()=>{if(join)await c.reducers.join({name,duckIndex:i%10,room:selectedRoom});clearTimeout(timer);resolve(c)})().catch(reject)}).subscribeToAllTables()}).onConnectError((_c,e)=>{clearTimeout(timer);reject(e)}).build();
+ DbConnection.builder().withCompression('none').withUri(uri).withDatabaseName(database).onConnect(c=>{clients.push(c);beats.push(setInterval(()=>{try{void c.reducers.heartbeat({}).catch(()=>{})}catch{}},4000));c.subscriptionBuilder().onApplied(()=>{void(async()=>{if(join)await c.reducers.join({name,duckIndex:i%10,room:selectedRoom});clearTimeout(timer);resolve(c)})().catch(reject)}).subscribeToAllTables()}).onConnectError((_c,e)=>{clearTimeout(timer);reject(e)}).build();
 })}
 async function until(check:()=>boolean,timeout=65000){const t=Date.now();while(!check()){if(Date.now()-t>timeout)throw Error(`Timed out waiting for: ${check.toString().slice(0,160)}`);await sleep(30)}}
 const key=(p:{identity:{toHexString:()=>string}})=>p.identity.toHexString();
@@ -84,6 +86,6 @@ async function main(){
   assert.equal([...late.db.player.iter()].reduce((n,p)=>n+p.racesWon,0),winsBefore,'a forfeited race hands out no win');
  }
  console.log(`PASS: leaving drops the duck from the roster, even mid-race; ${AUTO_CRUISE?'race 2 finishes on cruise':'a still race is forfeited with no winner'}.`);
- for(const c of clients)c.disconnect();console.log('ALL MULTIPLAYER CHECKS PASSED');
+ beats.forEach(clearInterval);for(const c of clients)c.disconnect();console.log('ALL MULTIPLAYER CHECKS PASSED');
 }
-main().catch(e=>{console.error(e);for(const c of clients)c.disconnect();process.exitCode=1});
+main().catch(e=>{console.error(e);beats.forEach(clearInterval);for(const c of clients)c.disconnect();process.exitCode=1});

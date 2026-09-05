@@ -51,25 +51,32 @@ export const TACKLE_RANGE = 45;
 
 // The river layout for one race, ten segments long. Even segments hold a pair of "?" buoys in two
 // lanes only; odd segments alternate obstacles (never more than two of the five lanes) with bands of
-// rapids across three lanes that push a duck along. The seed shifts the lanes from race to race.
-export function trackLayout(seed: number): Feature[] {
+// rapids across two lanes that push a duck along. The seed is drawn fresh for every race, so the
+// whirlpool never sits in a predictable lane. A solo run packs an obstacle into every segment too.
+export function trackLayout(seed: number, solo = false): Feature[] {
   const features: Feature[] = [];
+  const step = (n: number) => Math.abs(Math.floor(seed / 7 ** n)) % LANES;
   for (let k = 0; k < 10; k++) {
     const pos = 220 + k * 200;
     if (k % 2 === 0) {
-      const first = (seed + k * 3) % LANES;
+      const first = step(k);
       features.push({ kind: 'buoy', lane: first, pos, seq: k }, { kind: 'buoy', lane: (first + 2) % LANES, pos, seq: k });
+      if (solo) features.push({ kind: k % 4 ? 'rock' : 'log', lane: (first + 1) % LANES, pos, seq: k });
     } else if (k === 3 || k === 7) {
-      const first = (seed + k) % (LANES - 2);
-      for (let lane = first; lane < first + 3; lane++) features.push({ kind: 'rapids', lane, pos, seq: k });
+      const first = step(k) % (LANES - 1);
+      for (let lane = first; lane < first + 2; lane++) features.push({ kind: 'rapids', lane, pos, seq: k });
+      if (solo) features.push({ kind: 'rock', lane: (first + 3) % LANES, pos, seq: k });
     } else {
       // Rocks bonk hard, logs bonk softly, and the one whirlpool per race pulls a duck under.
-      const kind = (seed + k) % 4 < 2 ? 'rock' : 'log';
-      const first = (seed * 2 + k * 2) % LANES;
+      const kind = step(k + 1) % 2 ? 'rock' : 'log';
+      const first = step(k);
       features.push({ kind, lane: first, pos, seq: k });
       if (k === 5) features.push({ kind: 'whirlpool', lane: (first + 3) % LANES, pos, seq: k });
-      else if (k > 1) features.push({ kind: kind === 'rock' ? 'log' : 'rock', lane: (first + 3) % LANES, pos, seq: k });
+      else if (k > 1 || solo) features.push({ kind: kind === 'rock' ? 'log' : 'rock', lane: (first + 3) % LANES, pos, seq: k });
+      if (solo && k > 1) features.push({ kind: 'log', lane: (first + 1) % LANES, pos, seq: k });
     }
   }
   return features;
 }
+// How long a silent client stays "online" before the room stops waiting for it (microseconds).
+export const STALE_AFTER_MICROS = 12_000_000n;

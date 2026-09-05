@@ -6,6 +6,7 @@
 import { type Infer as __Infer } from "spacetimedb";
 
 // Import all reducer arg schemas
+import HeartbeatReducer from "../heartbeat_reducer";
 import JoinReducer from "../join_reducer";
 import JoinRandomReducer from "../join_random_reducer";
 import LeaveRoomReducer from "../leave_room_reducer";
@@ -14,6 +15,7 @@ import SwitchLaneReducer from "../switch_lane_reducer";
 import TapReducer from "../tap_reducer";
 import UseItemReducer from "../use_item_reducer";
 
+export type HeartbeatParams = __Infer<typeof HeartbeatReducer>;
 export type JoinParams = __Infer<typeof JoinReducer>;
 export type JoinRandomParams = __Infer<typeof JoinRandomReducer>;
 export type LeaveRoomParams = __Infer<typeof LeaveRoomReducer>;

@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
 import {DbConnection} from '../src/module_bindings';
 const sleep=(ms:number)=>new Promise(r=>setTimeout(r,ms));
+// Every test client heartbeats like the app does, so the 12-second staleness sweep never drops it.
+const beats:ReturnType<typeof setInterval>[]=[];
 const clients:DbConnection[]=[];
 const uri=process.env.TEST_STDB_URI??'ws://127.0.0.1:3030',database=process.env.TEST_STDB_MODULE??'duckoff-mobile';
 async function connect(){return new Promise<DbConnection>((resolve,reject)=>{
  const timer=setTimeout(()=>reject(Error('Connection timed out')),20000);
- DbConnection.builder().withCompression('none').withUri(uri).withDatabaseName(database).onConnect(c=>{clients.push(c);c.subscriptionBuilder().onApplied(()=>{clearTimeout(timer);resolve(c)}).subscribeToAllTables()}).onConnectError((_c,e)=>{clearTimeout(timer);reject(e)}).build();
+ DbConnection.builder().withCompression('none').withUri(uri).withDatabaseName(database).onConnect(c=>{clients.push(c);beats.push(setInterval(()=>{try{void c.reducers.heartbeat({}).catch(()=>{})}catch{}},4000));c.subscriptionBuilder().onApplied(()=>{clearTimeout(timer);resolve(c)}).subscribeToAllTables()}).onConnectError((_c,e)=>{clearTimeout(timer);reject(e)}).build();
 })}
 async function until(check:()=>boolean,timeout=65000){const t=Date.now();while(!check()){if(Date.now()-t>timeout)throw Error(`Timed out waiting for: ${check.toString().slice(0,160)}`);await sleep(30)}}
 const roomOf=(c:DbConnection)=>c.db.player.identity.find(c.identity!)?.room;
@@ -44,6 +46,13 @@ async function main(){
  assert.equal(onlineIn(h,roomOf(h)!),1,'alone in the new room');
  assert.equal(h.db.race.id.find(roomOf(h)!)?.status,'lobby');
  console.log('PASS: when every room is full, a random joiner opens a new room alone.');
- for(const x of clients)x.disconnect();console.log('ALL RANDOM ROOM CHECKS PASSED');
+ // A phone that goes quiet drops off the roster after 12s even though its socket is still open.
+ const quiet=await connect();clearInterval(beats.pop()!);await quiet.reducers.join({name:'Sleepy',duckIndex:2,room:roomOf(h)!});
+ await until(()=>onlineIn(h,roomOf(h)!)===2);
+ await until(()=>onlineIn(h,roomOf(h)!)===1,20000);
+ assert.equal(h.db.player.identity.find(quiet.identity!)?.online,false);assert.equal(h.db.racePlayer.identity.find(quiet.identity!),null,'the lobby lets a silent duck go');
+ await quiet.reducers.heartbeat({});await until(()=>onlineIn(h,roomOf(h)!)===2);
+ console.log('PASS: a silent client is dropped from the lobby after 12s and comes back with a heartbeat.');
+ beats.forEach(clearInterval);for(const x of clients)x.disconnect();console.log('ALL RANDOM ROOM CHECKS PASSED');
 }
-main().catch(e=>{console.error(e);for(const c of clients)c.disconnect();process.exitCode=1});
+main().catch(e=>{console.error(e);beats.forEach(clearInterval);for(const c of clients)c.disconnect();process.exitCode=1});

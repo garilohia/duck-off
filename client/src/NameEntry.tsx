@@ -3,8 +3,8 @@ import DuckPreview from './three/DuckPreview';
 import {DUCKS,DUCK_COUNT} from './palette';
 import {unlockAudio,squeak} from './squeak';
 type Mode='random'|'code';
-type Props={onJoin:(name:string,index:number,room:string)=>Promise<void>;onRandomJoin:(name:string,index:number)=>Promise<void>;error?:string;initialRoom:string};
-export default function NameEntry({onJoin,onRandomJoin,error,initialRoom}:Props){
+type Props={onJoin:(name:string,index:number,room:string)=>Promise<void>;onRandomJoin:(name:string,index:number)=>Promise<void>;onSolo:(name:string,index:number)=>Promise<void>;error?:string;initialRoom:string};
+export default function NameEntry({onJoin,onRandomJoin,onSolo,error,initialRoom}:Props){
  const [room,setRoom]=useState(initialRoom);
  // A shared link pre-selects the code path; everyone else gets random matching.
  const [mode,setMode]=useState<Mode>(initialRoom?'code':'random');
@@ -29,6 +29,7 @@ export default function NameEntry({onJoin,onRandomJoin,error,initialRoom}:Props)
      {useCode&&<><label className="room-label" htmlFor="room-code">Room code <span>Same code, same lagoon.</span></label><div className="name-input"><input id="room-code" value={room} placeholder="e.g. SUNNY-DUCKS" maxLength={16} pattern="[A-Za-z0-9\-]{1,16}" required onChange={e=>setRoom(e.target.value.toUpperCase())} autoComplete="off" autoCapitalize="characters" spellCheck={false} enterKeyHint="go"/></div><p className="room-help">An unused code opens a brand new room. Rooms hold up to 12 ducks.</p></>}
      {error&&<p className="form-error" role="alert">{error}</p>}
      <button className="primary" disabled={busy}>{label} <span aria-hidden="true">↗</span></button>
+     <button type="button" className="secondary solo-button" disabled={busy} onClick={async()=>{unlockAudio();squeak(index);setBusy(true);try{await onSolo(name,index)}finally{setBusy(false)}}}>Practice alone <small>dodge everything on the river</small></button>
      <div className="mode-links">
       <button type="button" className="text-button room-mode" disabled={busy} onClick={()=>setMode(useCode?'random':'code')}>{useCode?'Join a random room instead':'Have a room code?'}</button>
      </div>

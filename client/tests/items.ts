@@ -15,7 +15,7 @@ assert.equal(hitState({...normal,slowTicks:24},'bomb').slowTicks,25);
 assert.deepEqual(new Set(Array.from({length:4},(_,i)=>itemAt(0,1,i))),new Set(['bomb','bubble','turbo','shield']));
 // Crossing order must use the actual slowed / boosted travel speed.
 assert((2400-2390)/travelSpeed(200,{...normal,slowTicks:25}) > (2400-2385)/travelSpeed(200,{...normal,turboTicks:30}));
-for(const seed of [1,2,3,4,5,6]){
+for(const seed of [1,2,3,4,5,6,77,12345,987654321]){
  const layout=trackLayout(seed);
  const bySeg=new Map<number,typeof layout>();for(const f of layout)bySeg.set(f.seq,[...(bySeg.get(f.seq)??[]),f]);
  for(const [seq,fs] of bySeg){
@@ -27,9 +27,16 @@ for(const seed of [1,2,3,4,5,6]){
  }
  assert(layout.some(f=>f.kind==='rapids')&&layout.some(f=>f.kind==='rock')&&layout.some(f=>f.kind==='log'));
  assert.equal(layout.filter(f=>f.kind==='whirlpool').length,1,'exactly one whirlpool per river');
+ assert(layout.filter(f=>f.kind==='rapids').every(f=>layout.filter(o=>o.kind==='rapids'&&o.seq===f.seq).length===2),'rapids span two lanes');
+ const solo=trackLayout(seed,true);
+ assert(solo.filter(f=>f.kind==='rock'||f.kind==='log').length>layout.filter(f=>f.kind==='rock'||f.kind==='log').length,'a solo run has more to dodge');
+ assert(new Set(solo.map(f=>f.seq)).size===10&&solo.every(f=>solo.filter(o=>o.seq===f.seq).length<=LANES-1),'a solo run always leaves open water');
 }
+assert.notDeepEqual(trackLayout(77).map(f=>f.lane),trackLayout(12345).map(f=>f.lane),'different seeds give different rivers');
 console.log('PASS: shields, non-stacking slowdowns, item rotation, modified crossing speeds and sparse track layouts.');
 
+// Every test client heartbeats like the app does, so the 12-second staleness sweep never drops it.
+const beats:ReturnType<typeof setInterval>[]=[];
 const clients:DbConnection[]=[],room=`I-${Date.now().toString(36).toUpperCase()}`;
 const uri=process.env.TEST_STDB_URI??'ws://127.0.0.1:3030',database=process.env.TEST_STDB_MODULE??'duckoff-items';
 const sleep=(ms:number)=>new Promise(r=>setTimeout(r,ms));
@@ -37,7 +44,7 @@ async function until(check:()=>boolean,timeout=60000){const started=Date.now();w
 async function connect(name:string,selectedRoom=room){return new Promise<DbConnection>((resolve,reject)=>{
  const timeout=setTimeout(()=>reject(Error('Connection timeout')),20000);
  DbConnection.builder().withCompression('none').withUri(uri).withDatabaseName(database).onConnect(c=>{
-  clients.push(c);c.subscriptionBuilder().onApplied(()=>{void c.reducers.join({name,duckIndex:clients.length%10,room:selectedRoom}).then(()=>{clearTimeout(timeout);resolve(c)},reject)}).subscribeToAllTables();
+  clients.push(c);beats.push(setInterval(()=>{try{void c.reducers.heartbeat({}).catch(()=>{})}catch{}},4000));c.subscriptionBuilder().onApplied(()=>{void c.reducers.join({name,duckIndex:clients.length%10,room:selectedRoom}).then(()=>{clearTimeout(timeout);resolve(c)},reject)}).subscribeToAllTables();
  }).onConnectError((_c,e)=>{clearTimeout(timeout);reject(e)}).build();
 })}
 // Hop lane by lane; each reducer call resolves once the caller's own row reflects the change.
@@ -55,8 +62,8 @@ async function main(){
  await until(()=>first.db.race.id.find(room)?.status==='countdown');
  const features=()=>[...first.db.raceFeature.iter()].filter(f=>f.room===room);
  await until(()=>features().length>=10);
- const layout=trackLayout(first.db.race.id.find(room)!.raceNumber);
- assert.deepEqual(features().map(f=>[f.kind,f.lane,f.pos,f.seq]).sort(),layout.map(f=>[f.kind,f.lane,f.pos,f.seq]).sort());
+ const layout=features().map(f=>({kind:f.kind,lane:f.lane,pos:f.pos,seq:f.seq}));
+ assert.equal(layout.filter(f=>f.kind==='whirlpool').length,1);assert(layout.every(f=>f.pos===220+f.seq*200&&f.lane<LANES));
  assert.deepEqual(new Set(racers.map(c=>row(c).lane)),new Set([0,1,2,3,4]),'ducks start spread across all five lanes');
  // Obstacles and rapids are checked in later segments so coasting ducks never reach them early.
  const buoys=features().filter(f=>f.kind==='buoy'&&f.seq===0),obstacle=features().find(f=>f.seq===5&&f.kind!=='whirlpool')!,whirlpool=features().find(f=>f.kind==='whirlpool')!,rapids=features().filter(f=>f.kind==='rapids'&&f.seq===7);
@@ -146,7 +153,7 @@ async function main(){
   assert(racers.every(c=>state(c).held===''&&state(c).slowTicks===0&&state(c).shieldTicks===0&&state(c).turboTicks===0));
   assert.equal([...first.db.itemEffect.iter()].filter(e=>e.room===room).length,0);
   await until(()=>features().length>=10&&features().every(f=>f.seq>=0));
-  assert.notDeepEqual(features().map(f=>[f.kind,f.lane]).sort(),layout.map(f=>[f.kind,f.lane]).sort(),'a rematch shuffles the river');
+  assert.equal(features().filter(f=>f.kind==='whirlpool').length,1,'a rematch lays out a fresh river with one whirlpool');
   console.log('PASS: all 11 clients agree on item-race results; rematches clear every item and effect and lay out a fresh river.');
   // Edge case: the whirlpool takes the only duck still swimming and nobody crossed, so the river wins and there is no podium.
   const solo=await connect('Solo swimmer',room+'-C');
@@ -157,10 +164,11 @@ async function main(){
   paddling([solo]);await until(()=>solo.db.racePlayer.identity.find(solo.identity!)!.drowned);await pause();
   await until(()=>solo.db.race.id.find(room+'-C')?.status==='finished');
   const soloRace=solo.db.race.id.find(room+'-C')!;
+  assert.equal(soloRace.solo,true);assert([...solo.db.raceFeature.iter()].filter(f=>f.room===room+'-C'&&(f.kind==='rock'||f.kind==='log')).length>layout.filter(f=>f.kind==='rock'||f.kind==='log').length,'a solo run is a denser obstacle course');
   assert.equal(soloRace.forfeited,true);assert.equal(soloRace.forfeitReason,'drowned');assert.equal(soloRace.winnerName,'');
   assert.equal([...solo.db.raceResult.iter()].filter(r=>r.room===room+'-C').length,0);
   assert.equal(solo.db.player.identity.find(solo.identity!)?.racesWon,0,'drowning is not a win');
   console.log('PASS: when every swimming duck drowns before anyone finishes, the race is forfeited with no winner.');
  }finally{await pause();}
 }
-main().then(()=>console.log('ALL ITEM CHECKS PASSED')).catch(e=>{console.error(e);process.exitCode=1}).finally(()=>clients.forEach(c=>c.disconnect()));
+main().then(()=>console.log('ALL ITEM CHECKS PASSED')).catch(e=>{console.error(e);process.exitCode=1}).finally(()=>(beats.forEach(clearInterval),clients.forEach(c=>c.disconnect())));

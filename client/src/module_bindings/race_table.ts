@@ -21,4 +21,5 @@ export default __t.row({
   idleTicks: __t.u32().name("idle_ticks"),
   forfeited: __t.bool(),
   forfeitReason: __t.string().name("forfeit_reason"),
+  solo: __t.bool(),
 });
