@@ -10,12 +10,6 @@ import {
   type Infer as __Infer,
 } from "spacetimedb";
 
-export default __t.row({
-  id: __t.u64().primaryKey(),
-  room: __t.string(),
-  kind: __t.string(),
-  lane: __t.u8(),
-  pos: __t.f64(),
-  seq: __t.u32(),
-  item: __t.string(),
-});
+export default {
+  amount: __t.f64(),
+};

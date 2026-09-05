@@ -1,13 +1,13 @@
 import { schema, table, t, SenderError, type ReducerCtx, type InferSchema } from 'spacetimedb/server';
 import { ScheduleAt, type Infer, type Identity } from 'spacetimedb';
-import { DUCK_COUNT, MAX_DUCKS, LANES, TRACK, AUTO_CRUISE, CRUISE_SPEED, STALE_AFTER_MICROS, IMPACT, DRAFT_RANGE, DRAFT_BONUS, TACKLE_RANGE, travelSpeed, hitState, itemAt, weightedItem, trackLayout } from './items';
+import { DUCK_COUNT, MAX_DUCKS, LANES, TRACK, AUTO_CRUISE, CRUISE_SPEED, STALE_AFTER_MICROS, SHIELD_TICKS, TRAP_DROP_BACK, OVERLAP, STEER_RATE, IMPACT, DRAFT_RANGE, DRAFT_BONUS, TACKLE_RANGE, travelSpeed, hitState, trackLayout } from './items';
 const player = table({public:true},{identity:t.identity().primaryKey(),room:t.string().index('btree'),name:t.string(),duckIndex:t.u8(),online:t.bool(),racesWon:t.u32(),racesPlayed:t.u32(),lastSeen:t.timestamp()});
 const race = table({public:true},{id:t.string().primaryKey(),status:t.string(),phaseTicksLeft:t.u32(),finishCounter:t.u32(),raceNumber:t.u32(),winnerName:t.string(),winnerDuckIndex:t.u8(),idleTicks:t.u32(),forfeited:t.bool(),forfeitReason:t.string(),solo:t.bool()});
-const racePlayer = table({public:true},{identity:t.identity().primaryKey(),room:t.string().index('btree'),name:t.string(),duckIndex:t.u8(),active:t.bool(),lane:t.u8(),pos:t.f64(),vel:t.f64(),taps:t.u32(),boostMeter:t.u32(),boostTicksLeft:t.u32(),place:t.u32(),rank:t.u32(),lastTapAt:t.u64(),drowned:t.bool(),bonks:t.u32(),seconds:t.f64()});
+const racePlayer = table({public:true},{identity:t.identity().primaryKey(),room:t.string().index('btree'),name:t.string(),duckIndex:t.u8(),active:t.bool(),lane:t.f64(),steer:t.f64(),pos:t.f64(),vel:t.f64(),taps:t.u32(),boostMeter:t.u32(),boostTicksLeft:t.u32(),place:t.u32(),rank:t.u32(),lastTapAt:t.u64(),drowned:t.bool(),bonks:t.u32(),seconds:t.f64()});
 const raceResult = table({public:true},{id:t.string().primaryKey(),room:t.string().index('btree'),raceNumber:t.u32(),identity:t.identity(),name:t.string(),duckIndex:t.u8(),place:t.u32(),taps:t.u32(),pos:t.f64(),drowned:t.bool(),bonks:t.u32(),seconds:t.f64()});
 const raceItem = table({public:true},{identity:t.identity().primaryKey(),room:t.string().index('btree'),held:t.string(),slowTicks:t.u32(),shieldTicks:t.u32(),turboTicks:t.u32()});
 // Buoys and obstacles for the current race, laid out per lane so ducks have to steer.
-const raceFeature = table({public:true},{id:t.u64().primaryKey().autoInc(),room:t.string().index('btree'),kind:t.string(),lane:t.u8(),pos:t.f64(),seq:t.u32()});
+const raceFeature = table({public:true},{id:t.u64().primaryKey().autoInc(),room:t.string().index('btree'),kind:t.string(),lane:t.u8(),pos:t.f64(),seq:t.u32(),item:t.string()});
 const itemEffect = table({public:true},{id:t.u64().primaryKey().autoInc(),room:t.string().index('btree'),source:t.identity(),target:t.identity(),kind:t.string(),sourcePos:t.f64(),targetPos:t.f64(),flightTicks:t.u32(),lifeTicks:t.u32(),blocked:t.bool()});
 const presence = table({public:true},{connectionId:t.connectionId().primaryKey(),identity:t.identity()});
 const raceTick = table({}, {scheduledId:t.u64().primaryKey().autoInc(),scheduledAt:t.scheduleAt()});
@@ -15,7 +15,7 @@ const stdb = schema({player,race,racePlayer,raceResult,raceItem,itemEffect,raceF
 export default stdb;
 type Ctx = ReducerCtx<InferSchema<typeof stdb>>;
 type Racer = Infer<typeof racePlayer.rowType>;
-const lane = (p:Infer<typeof player.rowType>,active=true,laneIndex=2):Racer => ({identity:p.identity,room:p.room,name:p.name,duckIndex:p.duckIndex,active,lane:laneIndex,pos:0,vel:0,taps:0,boostMeter:0,boostTicksLeft:0,place:0,rank:0,lastTapAt:0n,drowned:false,bonks:0,seconds:0});
+const lane = (p:Infer<typeof player.rowType>,active=true,laneIndex=2):Racer => ({identity:p.identity,room:p.room,name:p.name,duckIndex:p.duckIndex,active,lane:laneIndex,steer:0,pos:0,vel:0,taps:0,boostMeter:0,boostTicksLeft:0,place:0,rank:0,lastTapAt:0n,drowned:false,bonks:0,seconds:0});
 const emptyRace=(id:string)=>({id,status:'lobby',phaseTicksLeft:0,finishCounter:0,raceNumber:1,winnerName:'',winnerDuckIndex:0,idleTicks:0,forfeited:false,forfeitReason:'',solo:false});
 // A race where nobody paddles or steers for this long is forfeited: no winner, no podium.
 const IDLE_FORFEIT_TICKS=150;
@@ -118,25 +118,38 @@ export const startRace=stdb.reducer(ctx=>{
  for(const f of trackLayout(ctx.random.integerInRange(0,1_000_000_000),solo))ctx.db.raceFeature.insert({id:0n,room:p.room,...f});
  ctx.db.race.id.update({...emptyRace(p.room),status:'countdown',phaseTicksLeft:30,raceNumber,solo});
 });
-// Hop one lane left (-1) or right (+1). Allowed from the countdown so ducks can line up.
+// Moving sideways into rivals shoves them: anyone you now overlap that you did not overlap before the move
+// wobbles for a moment (a shield takes the shove), and you lose a little pace for the barge.
+function tackle(ctx:Ctx,p:Racer,fromLane:number):number{
+ let vel=p.vel;
+ for(const rival of ctx.db.racePlayer.room.filter(p.room)){
+  if(!rival.active||rival.place||rival.drowned||rival.identity.isEqual(p.identity)||Math.abs(rival.pos-p.pos)>TACKLE_RANGE)continue;
+  if(Math.abs(rival.lane-fromLane)<OVERLAP||Math.abs(rival.lane-p.lane)>=OVERLAP)continue;
+  const state=ctx.db.raceItem.identity.find(rival.identity);if(!state)continue;
+  const shielded=state.shieldTicks>0;ctx.db.raceItem.identity.update({...state,...hitState(state,'tackle')});
+  ctx.db.racePlayer.identity.update({...rival,vel:shielded?rival.vel:rival.vel*IMPACT.tackle.keep});
+  vel*=.85;
+ }
+ return vel;
+}
+// Hop one whole lane left (-1) or right (+1): a swipe, a side tap, or a tool call. Allowed from the countdown.
 export const switchLane = stdb.reducer({direction:t.i8()},(ctx,{direction})=>{
  const p=ctx.db.racePlayer.identity.find(ctx.sender);if(!p)return;const r=ctx.db.race.id.find(p.room);
- if(!p.active||p.place||!r||!['countdown','racing'].includes(r.status))return;
- const next=Math.max(0,Math.min(LANES-1,p.lane+Math.sign(direction)));
- if(next===p.lane||p.drowned)return;
- let vel=p.vel;
- if(r.status==='racing'){
-  // Barging into a lane shoves the rivals beside you; a shield takes the shove, and you lose a little pace too.
-  for(const rival of ctx.db.racePlayer.room.filter(p.room)){
-   if(rival.lane!==next||!rival.active||rival.place||rival.drowned||rival.identity.isEqual(ctx.sender)||Math.abs(rival.pos-p.pos)>TACKLE_RANGE)continue;
-   const state=ctx.db.raceItem.identity.find(rival.identity);if(!state)continue;
-   const shielded=state.shieldTicks>0;ctx.db.raceItem.identity.update({...state,...hitState(state,'tackle')});
-   ctx.db.racePlayer.identity.update({...rival,vel:shielded?rival.vel:rival.vel*IMPACT.tackle.keep});
-   vel*=.85;
-  }
- }
- ctx.db.racePlayer.identity.update({...p,lane:next,vel});
+ if(!p.active||p.place||p.drowned||!r||!['countdown','racing'].includes(r.status))return;
+ const next=Math.max(0,Math.min(LANES-1,Math.round(p.lane)+Math.sign(direction)));
+ if(next===p.lane)return;
+ const moved={...p,lane:next};
+ const vel=r.status==='racing'?tackle(ctx,moved,p.lane):p.vel;
+ ctx.db.racePlayer.identity.update({...moved,vel,steer:0});
  if(r.idleTicks)ctx.db.race.id.update({...r,idleTicks:0});
+});
+// Fluid steering: a tilt or a held key sets how hard the duck is pushing sideways (-1..1); the tick moves it.
+export const steer = stdb.reducer({amount:t.f64()},(ctx,{amount})=>{
+ const p=ctx.db.racePlayer.identity.find(ctx.sender);if(!p)return;const r=ctx.db.race.id.find(p.room);
+ if(!p.active||p.place||p.drowned||!r||!['countdown','racing'].includes(r.status))return;
+ const next=Number.isFinite(amount)?Math.max(-1,Math.min(1,amount)):0;
+ if(next!==p.steer)ctx.db.racePlayer.identity.update({...p,steer:next});
+ if(next&&r.idleTicks)ctx.db.race.id.update({...r,idleTicks:0});
 });
 export const tap = stdb.reducer(ctx=>{
  if(AUTO_CRUISE)return; // Ducks swim by themselves in steer-only mode.
@@ -154,7 +167,7 @@ export const useItem = stdb.reducer(ctx=>{
  if(!racer?.active||racer.place||racer.drowned||!item||item.room!==racer.room||ctx.db.race.id.find(racer.room)?.status!=='racing')throw new SenderError('Items are for active racers.');
  if(!item.held)throw new SenderError('Collect an item buoy first.');
  if(item.held==='turbo'||item.held==='shield'){
-  ctx.db.raceItem.identity.update({...item,held:'',...(item.held==='turbo'?{turboTicks:30,slowTicks:0}:{shieldTicks:60,slowTicks:0})});
+  ctx.db.raceItem.identity.update({...item,held:'',...(item.held==='turbo'?{turboTicks:30,slowTicks:0}:{shieldTicks:SHIELD_TICKS,slowTicks:0})});
   return;
  }
  const rivals=[...ctx.db.racePlayer.room.filter(racer.room)].filter(p=>p.active&&!p.place&&!p.drowned&&!p.identity.isEqual(ctx.sender));
@@ -162,7 +175,13 @@ export const useItem = stdb.reducer(ctx=>{
  // Bombs go forward when there is anyone to catch, and only fall back to the duck behind when you lead.
  const nearest=(list:Racer[])=>[...list].sort((a,b)=>Math.abs(a.pos-racer.pos)-Math.abs(b.pos-racer.pos)||tie(a,b))[0];
  const target=item.held==='bubble'?ahead[0]:(nearest(ahead)??nearest(rivals));
- if(!target)throw new SenderError(item.held==='bubble'?'No duck ahead. Save your bubble!':'No rivals in range. Save your bomb!');
+ if(!target&&item.held==='bubble'){
+  // Leading the pack: leave the bubble floating behind as a trap in this lane.
+  ctx.db.raceItem.identity.update({...item,held:''});
+  ctx.db.raceFeature.insert({id:0n,room:racer.room,kind:'trap',lane:Math.round(racer.lane),pos:Math.max(1,racer.pos-TRAP_DROP_BACK),seq:99,item:''});
+  return;
+ }
+ if(!target)throw new SenderError('No rivals in range. Save your bomb!');
  ctx.db.raceItem.identity.update({...item,held:''});
  ctx.db.itemEffect.insert({id:0n,room:racer.room,source:ctx.sender,target:target.identity,kind:item.held,sourcePos:racer.pos,targetPos:target.pos,flightTicks:6,lifeTicks:18,blocked:false});
 });
@@ -178,6 +197,14 @@ export const tick = stdb.reducer({onSchedule:raceTick},{arg:raceTick.rowType},ct
    for(const p of online)if(!ctx.db.racePlayer.identity.find(p.identity))ctx.db.racePlayer.insert(lane(p,true,[...ctx.db.racePlayer.room.filter(room)].length%LANES));
    if(!online.length&&room!=='PUBLIC')ctx.db.race.id.delete(room);
    continue; // Only startRace can begin the countdown.
+  }
+  // Ducks drift sideways under their steering during the countdown and the race.
+  if(current.status==='countdown'||current.status==='racing')for(const p of ctx.db.racePlayer.room.filter(room)){
+   if(!p.active||!p.steer||p.place||p.drowned)continue;
+   const moved={...p,lane:Math.max(0,Math.min(LANES-1,p.lane+p.steer*STEER_RATE))};
+   if(moved.lane===p.lane){ctx.db.racePlayer.identity.update({...p,steer:0});continue;}
+   const vel=current.status==='racing'?tackle(ctx,moved,p.lane):p.vel;
+   ctx.db.racePlayer.identity.update({...moved,vel});
   }
   if(current.status==='finished'){
    // Results stay until someone chooses Play again; a podium nobody is watching is cleaned up.
@@ -210,8 +237,7 @@ export const tick = stdb.reducer({onSchedule:raceTick},{arg:raceTick.rowType},ct
    }
    const racers=[...ctx.db.racePlayer.room.filter(room)].filter(p=>p.active);
    if(AUTO_CRUISE){const leader=Math.max(0,...racers.map(p=>p.pos));for(const p of racers)if(!p.place&&!p.drowned)p.vel=Math.max(p.vel,CRUISE_SPEED*(1+.25*(leader-p.pos)/TRACK)*(p.boostTicksLeft?1.3:1));}
-   const lanes=new Map([...racers].sort(tie).map((p,i)=>[p.identity.toHexString(),i]));
-   const drafting=(p:Racer)=>racers.some(o=>o!==p&&o.lane===p.lane&&!o.drowned&&o.pos>p.pos&&o.pos-p.pos<=DRAFT_RANGE);
+   const drafting=(p:Racer)=>racers.some(o=>o!==p&&Math.abs(o.lane-p.lane)<OVERLAP&&!o.drowned&&o.pos>p.pos&&o.pos-p.pos<=DRAFT_RANGE);
    const speeds=new Map(racers.map(p=>[p.identity.toHexString(),p.drowned?0:travelSpeed(p.vel,ctx.db.raceItem.identity.find(p.identity)??undefined)*(drafting(p)?DRAFT_BONUS:1)]));
    const speed=(p:Racer)=>speeds.get(p.identity.toHexString())??p.vel;
    // Interpolate crossing time within the tick, rather than relying on row iteration order.
@@ -225,8 +251,9 @@ export const tick = stdb.reducer({onSchedule:raceTick},{arg:raceTick.rowType},ct
     if(item){
      let state={held:item.held,slowTicks:Math.max(0,item.slowTicks-1),shieldTicks:Math.max(0,item.shieldTicks-1),turboTicks:Math.max(0,item.turboTicks-1)};
      // Anything in this lane between last tick's position and this one is crossed now.
-     if(!p.place&&!p.drowned)for(const f of features.filter(f=>f.lane===p.lane&&f.pos>from&&f.pos<=p.pos).sort((a,b)=>a.pos-b.pos)){
-      if(f.kind==='buoy'){if(!state.held){let held=weightedItem(itemAt(lanes.get(p.identity.toHexString())??0,r.raceNumber,f.seq),p.rank,racers.length);if(racers.length===1)held=held==='bomb'?'turbo':held==='bubble'?'shield':held;state.held=held;}}
+     if(!p.place&&!p.drowned)for(const f of features.filter(f=>Math.abs(f.lane-p.lane)<OVERLAP&&f.pos>from&&f.pos<=p.pos).sort((a,b)=>a.pos-b.pos)){
+      if(f.kind==='trap'){ctx.db.raceFeature.id.delete(f.id);const before=state.shieldTicks;state={...state,...hitState(state,'trap')};if(!before)p.bonks++;}
+      else if(f.kind==='buoy'){if(!state.held)state.held=f.item;} // You get exactly the toy you saw floating there.
       else if(f.kind==='rapids'){p.vel=Math.min(260,p.vel+45);p.boostTicksLeft=Math.max(p.boostTicksLeft,15);}
       else if(f.kind==='whirlpool'){if(state.shieldTicks>0)state.shieldTicks=0;else{p.drowned=true;p.vel=0;p.boostTicksLeft=0;state.held='';break;}}
       else{const before=state.shieldTicks;state={...state,...hitState(state,f.kind)};if(!before){p.vel*=IMPACT[f.kind]?.keep??.5;p.bonks++;}}

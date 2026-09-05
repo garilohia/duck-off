@@ -64,6 +64,7 @@ export const RaceFeature = __t.object("RaceFeature", {
   lane: __t.u8(),
   pos: __t.f64(),
   seq: __t.u32(),
+  item: __t.string(),
 });
 export type RaceFeature = __Infer<typeof RaceFeature>;
 
@@ -83,7 +84,8 @@ export const RacePlayer = __t.object("RacePlayer", {
   name: __t.string(),
   duckIndex: __t.u8(),
   active: __t.bool(),
-  lane: __t.u8(),
+  lane: __t.f64(),
+  steer: __t.f64(),
   pos: __t.f64(),
   vel: __t.f64(),
   taps: __t.u32(),

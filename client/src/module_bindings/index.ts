@@ -39,6 +39,7 @@ import JoinReducer from "./join_reducer";
 import JoinRandomReducer from "./join_random_reducer";
 import LeaveRoomReducer from "./leave_room_reducer";
 import StartRaceReducer from "./start_race_reducer";
+import SteerReducer from "./steer_reducer";
 import SwitchLaneReducer from "./switch_lane_reducer";
 import TapReducer from "./tap_reducer";
 import UseItemReducer from "./use_item_reducer";
@@ -174,6 +175,7 @@ const reducersSchema = __reducers(
   __reducerSchema("join_random", JoinRandomReducer),
   __reducerSchema("leave_room", LeaveRoomReducer),
   __reducerSchema("start_race", StartRaceReducer),
+  __reducerSchema("steer", SteerReducer),
   __reducerSchema("switch_lane", SwitchLaneReducer),
   __reducerSchema("tap", TapReducer),
   __reducerSchema("use_item", UseItemReducer),
