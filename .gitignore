@@ -1,0 +1,11 @@
+node_modules/
+.next/
+out/
+.env*
+!.env.example
+.stdb-data/
+server/spacetimedb/dist/
+*.log
+
+dist/
+*.tsbuildinfo
