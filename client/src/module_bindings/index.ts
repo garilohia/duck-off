@@ -37,13 +37,16 @@ import {
 import JoinReducer from "./join_reducer";
 import StartRaceReducer from "./start_race_reducer";
 import TapReducer from "./tap_reducer";
+import UseItemReducer from "./use_item_reducer";
 
 // Import all procedure arg schemas
 
 // Import all table schema definitions
+import ItemEffectRow from "./item_effect_table";
 import PlayerRow from "./player_table";
 import PresenceRow from "./presence_table";
 import RaceRow from "./race_table";
+import RaceItemRow from "./race_item_table";
 import RacePlayerRow from "./race_player_table";
 import RaceResultRow from "./race_result_table";
 
@@ -51,6 +54,20 @@ import RaceResultRow from "./race_result_table";
 
 /** The schema information for all tables in this module. This is defined the same was as the tables would have been defined in the server. */
 const tablesSchema = __schema({
+  itemEffect: __table({
+    name: 'item_effect',
+    indexes: [
+      { accessor: 'id', name: 'item_effect_id_idx_btree', algorithm: 'btree', columns: [
+        'id',
+      ] },
+      { accessor: 'room', name: 'item_effect_room_idx_btree', algorithm: 'btree', columns: [
+        'room',
+      ] },
+    ],
+    constraints: [
+      { name: 'item_effect_id_key', constraint: 'unique', columns: ['id'] },
+    ],
+  }, ItemEffectRow),
   player: __table({
     name: 'player',
     indexes: [
@@ -87,6 +104,20 @@ const tablesSchema = __schema({
       { name: 'race_id_key', constraint: 'unique', columns: ['id'] },
     ],
   }, RaceRow),
+  raceItem: __table({
+    name: 'race_item',
+    indexes: [
+      { accessor: 'identity', name: 'race_item_identity_idx_btree', algorithm: 'btree', columns: [
+        'identity',
+      ] },
+      { accessor: 'room', name: 'race_item_room_idx_btree', algorithm: 'btree', columns: [
+        'room',
+      ] },
+    ],
+    constraints: [
+      { name: 'race_item_identity_key', constraint: 'unique', columns: ['identity'] },
+    ],
+  }, RaceItemRow),
   racePlayer: __table({
     name: 'race_player',
     indexes: [
@@ -122,6 +153,7 @@ const reducersSchema = __reducers(
   __reducerSchema("join", JoinReducer),
   __reducerSchema("start_race", StartRaceReducer),
   __reducerSchema("tap", TapReducer),
+  __reducerSchema("use_item", UseItemReducer),
 );
 
 /** The schema information for all procedures in this module. This is defined the same way as the procedures would have been defined in the server. */

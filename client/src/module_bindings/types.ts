@@ -10,6 +10,20 @@ import {
   type Infer as __Infer,
 } from "spacetimedb";
 
+export const ItemEffect = __t.object("ItemEffect", {
+  id: __t.u64(),
+  room: __t.string(),
+  source: __t.identity(),
+  target: __t.identity(),
+  kind: __t.string(),
+  sourcePos: __t.f64(),
+  targetPos: __t.f64(),
+  flightTicks: __t.u32(),
+  lifeTicks: __t.u32(),
+  blocked: __t.bool(),
+});
+export type ItemEffect = __Infer<typeof ItemEffect>;
+
 export const Player = __t.object("Player", {
   identity: __t.identity(),
   room: __t.string(),
@@ -37,6 +51,17 @@ export const Race = __t.object("Race", {
   winnerDuckIndex: __t.u8(),
 });
 export type Race = __Infer<typeof Race>;
+
+export const RaceItem = __t.object("RaceItem", {
+  identity: __t.identity(),
+  room: __t.string(),
+  held: __t.string(),
+  nextPickup: __t.u32(),
+  slowTicks: __t.u32(),
+  shieldTicks: __t.u32(),
+  turboTicks: __t.u32(),
+});
+export type RaceItem = __Infer<typeof RaceItem>;
 
 export const RacePlayer = __t.object("RacePlayer", {
   identity: __t.identity(),

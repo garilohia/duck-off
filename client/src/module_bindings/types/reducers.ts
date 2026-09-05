@@ -9,8 +9,10 @@ import { type Infer as __Infer } from "spacetimedb";
 import JoinReducer from "../join_reducer";
 import StartRaceReducer from "../start_race_reducer";
 import TapReducer from "../tap_reducer";
+import UseItemReducer from "../use_item_reducer";
 
 export type JoinParams = __Infer<typeof JoinReducer>;
 export type StartRaceParams = __Infer<typeof StartRaceReducer>;
 export type TapParams = __Infer<typeof TapReducer>;
+export type UseItemParams = __Infer<typeof UseItemReducer>;
 
