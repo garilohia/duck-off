@@ -2,8 +2,11 @@ import {useState} from 'react';
 import DuckPreview from './three/DuckPreview';
 import {DUCKS} from './palette';
 import {unlockAudio,squeak} from './squeak';
-export default function NameEntry({onJoin,error,initialRoom,onCancel}:{onJoin:(name:string,index:number,room:string)=>Promise<void>;error?:string;initialRoom:string;onCancel?:()=>void}){
+type Props={onJoin:(name:string,index:number,room:string)=>Promise<void>;onRandomJoin:(name:string,index:number)=>Promise<void>;error?:string;initialRoom:string;onCancel?:()=>void};
+export default function NameEntry({onJoin,onRandomJoin,error,initialRoom,onCancel}:Props){
  const [room,setRoom]=useState(initialRoom);
+ // A shared link or an existing room pre-selects the code path; newcomers get random matching.
+ const [useCode,setUseCode]=useState(!!initialRoom);
  const [index,setIndex]=useState(()=>{const saved=Number(localStorage.getItem('duckoff_duck'));return Number.isInteger(saved)&&saved>=0&&saved<8?saved:0;});
  const [name,setName]=useState(()=>localStorage.getItem('duckoff_name')??''),[busy,setBusy]=useState(false);
  const choose=(i:number)=>{unlockAudio();setIndex(i);squeak(i,.12)};
@@ -17,14 +20,14 @@ export default function NameEntry({onJoin,error,initialRoom,onCancel}:{onJoin:(n
      <div className="character-info" aria-live="polite"><h2>{DUCKS[index][0]}</h2><span>{DUCKS[index][1]}</span></div>
      <div className="picker-dots" aria-label="Duck characters">{DUCKS.map((d,i)=><button key={d[0]} aria-label={d[0]} aria-pressed={i===index} onClick={()=>choose(i)} className={i===index?'selected':''}><span/></button>)}</div>
     </div>
-    <form onSubmit={async e=>{e.preventDefault();unlockAudio();squeak(index);setBusy(true);try{await onJoin(name,index,room)}finally{setBusy(false)}}}>
-     <label htmlFor="duck-name">Your duck’s name</label><div className="name-input"><input id="duck-name" placeholder="e.g. Waddles" maxLength={14} value={name} onChange={e=>setName(e.target.value)} autoComplete="nickname" enterKeyHint="next"/><span>{name.length}/14</span></div>
-     <label className="room-label" htmlFor="room-code">Room code <span>Same code, same lagoon.</span></label><div className="name-input"><input id="room-code" value={room} maxLength={16} pattern="[A-Za-z0-9-]{1,16}" required onChange={e=>setRoom(e.target.value.toUpperCase())} autoComplete="off" autoCapitalize="characters" spellCheck={false} enterKeyHint="go"/></div>
-     <button className="new-room" type="button" onClick={()=>setRoom(crypto.randomUUID().slice(0,6).toUpperCase())}>＋ Make a new room</button>
+    <form onSubmit={async e=>{e.preventDefault();unlockAudio();squeak(index);setBusy(true);try{if(useCode)await onJoin(name,index,room);else await onRandomJoin(name,index)}finally{setBusy(false)}}}>
+     <label htmlFor="duck-name">Your duck’s name</label><div className="name-input"><input id="duck-name" placeholder="e.g. Waddles" maxLength={14} value={name} onChange={e=>setName(e.target.value)} autoComplete="nickname" enterKeyHint={useCode?'next':'go'}/><span>{name.length}/14</span></div>
+     {useCode&&<><label className="room-label" htmlFor="room-code">Room code <span>Same code, same lagoon.</span></label><div className="name-input"><input id="room-code" value={room} placeholder="e.g. SUNNY-DUCKS" maxLength={16} pattern="[A-Za-z0-9-]{1,16}" required onChange={e=>setRoom(e.target.value.toUpperCase())} autoComplete="off" autoCapitalize="characters" spellCheck={false} enterKeyHint="go"/></div><p className="room-help">An unused code opens a brand new room.</p></>}
      {error&&<p className="form-error" role="alert">{error}</p>}
-     <button className="primary" disabled={busy}>{busy?'Hopping in…':'Let’s waddle in'} <span aria-hidden="true">↗</span></button>
+     <button className="primary" disabled={busy}>{busy?(useCode?'Hopping in…':'Finding your flock…'):(useCode?'Join this room':'Join a random room')} <span aria-hidden="true">↗</span></button>
+     <button type="button" className="text-button room-mode" disabled={busy} onClick={()=>setUseCode(!useCode)}>{useCode?'Join a random room instead':'Have a room code?'}</button>
      {onCancel&&<button type="button" className="text-button" onClick={onCancel}>Back to the race</button>}
-     <p className="entry-note">No rush. Your race starts when you say so.</p>
+     <p className="entry-note">{useCode?'Share the code with friends. Start when you’re ready.':'We’ll find a room with other ducks somewhere in the world. If the river is quiet, you’ll open one for the next duck to find.'}</p>
     </form>
    </section>
   </div><footer className="entry-footer"><span>Made for little moments together.</span><span>Sound on for tiny squeaks ♫</span></footer>
