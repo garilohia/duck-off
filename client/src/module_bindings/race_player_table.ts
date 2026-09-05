@@ -25,4 +25,5 @@ export default __t.row({
   place: __t.u32(),
   rank: __t.u32(),
   lastTapAt: __t.u64().name("last_tap_at"),
+  drowned: __t.bool(),
 });

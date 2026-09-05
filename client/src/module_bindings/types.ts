@@ -49,6 +49,9 @@ export const Race = __t.object("Race", {
   raceNumber: __t.u32(),
   winnerName: __t.string(),
   winnerDuckIndex: __t.u8(),
+  idleTicks: __t.u32(),
+  forfeited: __t.bool(),
+  forfeitReason: __t.string(),
 });
 export type Race = __Infer<typeof Race>;
 
@@ -87,6 +90,7 @@ export const RacePlayer = __t.object("RacePlayer", {
   place: __t.u32(),
   rank: __t.u32(),
   lastTapAt: __t.u64(),
+  drowned: __t.bool(),
 });
 export type RacePlayer = __Infer<typeof RacePlayer>;
 
@@ -100,6 +104,7 @@ export const RaceResult = __t.object("RaceResult", {
   place: __t.u32(),
   taps: __t.u32(),
   pos: __t.f64(),
+  drowned: __t.bool(),
 });
 export type RaceResult = __Infer<typeof RaceResult>;
 

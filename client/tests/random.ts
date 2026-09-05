@@ -7,7 +7,7 @@ async function connect(){return new Promise<DbConnection>((resolve,reject)=>{
  const timer=setTimeout(()=>reject(Error('Connection timed out')),20000);
  DbConnection.builder().withCompression('none').withUri(uri).withDatabaseName(database).onConnect(c=>{clients.push(c);c.subscriptionBuilder().onApplied(()=>{clearTimeout(timer);resolve(c)}).subscribeToAllTables()}).onConnectError((_c,e)=>{clearTimeout(timer);reject(e)}).build();
 })}
-async function until(check:()=>boolean,timeout=65000){const t=Date.now();while(!check()){if(Date.now()-t>timeout)throw Error('Timed out');await sleep(30)}}
+async function until(check:()=>boolean,timeout=65000){const t=Date.now();while(!check()){if(Date.now()-t>timeout)throw Error(`Timed out waiting for: ${check.toString().slice(0,160)}`);await sleep(30)}}
 const roomOf=(c:DbConnection)=>c.db.player.identity.find(c.identity!)?.room;
 const onlineIn=(c:DbConnection,room:string)=>[...c.db.player.iter()].filter(p=>p.room===room&&p.online).length;
 async function main(){
@@ -27,7 +27,8 @@ async function main(){
  const e=await connect();await e.reducers.joinRandom({name:'Newbie',duckIndex:4});
  assert.equal(roomOf(e),codeRoom,'a waiting room beats a racing one');
  console.log('PASS: racers stay put mid-race; newcomers prefer a room that is waiting to start.');
- await Promise.all(Array.from({length:10},async(_,i)=>{const x=await connect();await x.reducers.join({name:`Filler ${i}`,duckIndex:i%10,room:codeRoom})}));
+ // The drifter may have picked the code room too, so fill it to exactly twelve based on the live count.
+ await Promise.all(Array.from({length:12-onlineIn(e,codeRoom)},async(_,i)=>{const x=await connect();await x.reducers.join({name:`Filler ${i}`,duckIndex:i%10,room:codeRoom})}));
  await until(()=>onlineIn(e,codeRoom)>=12);
  const f=await connect();await f.reducers.joinRandom({name:'Latecomer',duckIndex:5});
  assert.equal(roomOf(f),first,'a full room is skipped');
@@ -35,6 +36,14 @@ async function main(){
  assert.equal(roomOf(g),undefined,'a rejected join leaves no player row behind');
  assert.equal(f.db.racePlayer.identity.find(f.identity!)?.active,a.db.race.id.find(first)?.status==='finished','late arrivals spectate a live race');
  console.log('PASS: full rooms are skipped by matching and refuse typed joins; late arrivals wait for the next race.');
+ // With every room full, a random joiner is never turned away: they open a fresh room and wait alone.
+ await Promise.all(Array.from({length:12-onlineIn(a,first)},async(_,i)=>{const x=await connect();await x.reducers.join({name:`Packer ${i}`,duckIndex:i%10,room:first})}));
+ await until(()=>onlineIn(a,first)>=12);
+ const h=await connect();await h.reducers.joinRandom({name:'Thirteenth',duckIndex:7});
+ assert(![first,codeRoom].includes(roomOf(h)!),`got a fresh room, not ${roomOf(h)}`);
+ assert.equal(onlineIn(h,roomOf(h)!),1,'alone in the new room');
+ assert.equal(h.db.race.id.find(roomOf(h)!)?.status,'lobby');
+ console.log('PASS: when every room is full, a random joiner opens a new room alone.');
  for(const x of clients)x.disconnect();console.log('ALL RANDOM ROOM CHECKS PASSED');
 }
 main().catch(e=>{console.error(e);for(const c of clients)c.disconnect();process.exitCode=1});

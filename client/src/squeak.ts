@@ -19,3 +19,22 @@ export function bonk(){const c=ready();if(!c)return;const now=c.currentTime;cons
 export function fanfare(index:number){[0,.13,.26].forEach((at,i)=>squeak(index,.3,0,1+i*.25,at));squeak(index,.34,0,1.9,.46);}
 /** Bank ducks cheering as you pass, panned to their side of the river. */
 export function cheer(pan:number){squeak(4,.07,pan,1.6);squeak(7,.06,pan,1.9,.07);}
+
+/** A noisy "hooray": a swelling crowd of little voices. Uses /sounds/cheer.mp3 when the site ships one, else it is synthesised. */
+let cheerClip:HTMLAudioElement|null|undefined;
+export function crowdCheer(){
+ if(muted)return;
+ if(cheerClip===undefined){cheerClip=null;try{const a=new Audio('/sounds/cheer.mp3');a.preload='auto';a.addEventListener('canplaythrough',()=>{cheerClip=a},{once:true});a.load();}catch{}}
+ if(cheerClip){cheerClip.currentTime=0;cheerClip.volume=.7;void cheerClip.play().catch(()=>{});return;}
+ const c=ready();if(!c)return;const now=c.currentTime;
+ const master=c.createGain();master.gain.setValueAtTime(.001,now);master.gain.exponentialRampToValueAtTime(.5,now+.25);master.gain.setValueAtTime(.5,now+1.4);master.gain.exponentialRampToValueAtTime(.001,now+2.6);master.connect(c.destination);
+ // Breathy crowd bed.
+ const seconds=2.7,buffer=c.createBuffer(1,Math.ceil(c.sampleRate*seconds),c.sampleRate),data=buffer.getChannelData(0);for(let i=0;i<data.length;i++)data[i]=(Math.random()*2-1);
+ const noise=c.createBufferSource(),band=c.createBiquadFilter();noise.buffer=buffer;band.type='bandpass';band.frequency.setValueAtTime(900,now);band.frequency.linearRampToValueAtTime(1600,now+1.2);band.Q.value=.7;const bed=c.createGain();bed.gain.value=.22;noise.connect(band);band.connect(bed);bed.connect(master);noise.start(now);noise.stop(now+seconds);
+ // A dozen little "yaaay" voices, each sliding up then down with its own vowel.
+ const cleanup:AudioNode[]=[noise,band,bed];
+ for(let v=0;v<12;v++){const start=now+Math.random()*.5,len=.7+Math.random()*.9,base=520+Math.random()*420;const osc=c.createOscillator(),formant=c.createBiquadFilter(),g=c.createGain(),pan=c.createStereoPanner();osc.type='sawtooth';osc.frequency.setValueAtTime(base*.8,start);osc.frequency.exponentialRampToValueAtTime(base*1.25,start+len*.35);osc.frequency.exponentialRampToValueAtTime(base*.9,start+len);formant.type='bandpass';formant.frequency.value=700+Math.random()*900;formant.Q.value=2.5;g.gain.setValueAtTime(.001,start);g.gain.exponentialRampToValueAtTime(.09,start+.08);g.gain.setValueAtTime(.09,start+len*.6);g.gain.exponentialRampToValueAtTime(.001,start+len);pan.pan.value=Math.random()*1.6-.8;osc.connect(formant);formant.connect(g);g.connect(pan);pan.connect(master);osc.start(start);osc.stop(start+len+.05);cleanup.push(osc,formant,g,pan);}
+ setTimeout(()=>{cleanup.forEach(n=>n.disconnect());master.disconnect()},(seconds+.5)*1000);
+}
+/** Glub glub: the whirlpool got you. */
+export function glub(index:number){const c=ready();if(!c)return;const now=c.currentTime,base=620*1.05**index;const osc=c.createOscillator(),gain=c.createGain();osc.type='triangle';osc.frequency.setValueAtTime(base,now);osc.frequency.exponentialRampToValueAtTime(base*.28,now+.7);gain.gain.setValueAtTime(.3,now);gain.gain.exponentialRampToValueAtTime(.001,now+.75);osc.connect(gain);gain.connect(c.destination);osc.start(now);osc.stop(now+.76);for(let i=0;i<5;i++){const at=now+.15+i*.13,b=c.createOscillator(),g=c.createGain();b.type='sine';b.frequency.setValueAtTime(300+i*90,at);b.frequency.exponentialRampToValueAtTime(900+i*120,at+.07);g.gain.setValueAtTime(.001,at);g.gain.exponentialRampToValueAtTime(.12,at+.02);g.gain.exponentialRampToValueAtTime(.001,at+.09);b.connect(g);g.connect(c.destination);b.start(at);b.stop(at+.1);b.onended=()=>{b.disconnect();g.disconnect()};}osc.onended=()=>{osc.disconnect();gain.disconnect()};}

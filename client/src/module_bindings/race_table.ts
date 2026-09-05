@@ -18,4 +18,7 @@ export default __t.row({
   raceNumber: __t.u32().name("race_number"),
   winnerName: __t.string().name("winner_name"),
   winnerDuckIndex: __t.u8().name("winner_duck_index"),
+  idleTicks: __t.u32().name("idle_ticks"),
+  forfeited: __t.bool(),
+  forfeitReason: __t.string().name("forfeit_reason"),
 });

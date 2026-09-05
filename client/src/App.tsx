@@ -36,9 +36,12 @@ function Game(){
   await join({name,duckIndex,room:nextRoom});finishJoin(name,duckIndex,nextRoom,byCode);
  };
  const findRoom=async(name:string,duckIndex:number)=>{
+  const me=()=>identity?(getConnection() as DbConnection|null)?.db.player.identity.find(identity):undefined;
+  const before=me();
   await joinRandom({name,duckIndex});
-  // The reducer result applies its row updates before resolving, so our row already names the room.
-  const assignment=identity?(getConnection() as DbConnection|null)?.db.player.identity.find(identity):undefined;
+  // The row update usually lands before the reducer resolves, but not always: give the cache a moment.
+  let assignment=me();
+  for(let waited=0;(!assignment||(before&&assignment.room===before.room&&waited<400))&&waited<3000;waited+=50){await new Promise(r=>setTimeout(r,50));assignment=me();}
   if(!assignment)throw new Error('Your room is still connecting. Please try again.');
   finishJoin(name,duckIndex,assignment.room,false);
  };

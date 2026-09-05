@@ -1,4 +1,6 @@
 export const LANES = 5;
+/** Steer-only build (the `steer-only` branch flips this): no paddle button, ducks swim on their own. Must match AUTO_CRUISE on the server. */
+export const STEER_ONLY = false;
 export const TRACK = 2400;
 /** World x for a lane; the river is 32 units wide, so five lanes sit 4.5 apart. */
 export const laneX = (lane: number) => (lane - (LANES - 1) / 2) * 4.5;
@@ -8,7 +10,10 @@ export const ITEMS: Record<string, { name: string; icon: string; hint: string }>
   turbo: { name: 'Rocket rush', icon: '🚀', hint: 'Go 55% faster for 3s. Clears a slowdown.' },
   shield: { name: 'Bubble shield', icon: '🛡', hint: 'Block one hit for 6s. Clears a slowdown.' },
 };
-export const OBSTACLES: Record<string, { name: string; hint: string }> = {
-  rock: { name: 'Rocks', hint: 'Bump one and you lose most of your speed for 1.5s. Swerve around it.' },
-  log: { name: 'Logs', hint: 'Same bonk as a rock, just floatier. A bubble shield takes the hit for you.' },
+export const OBSTACLES: Record<string, { name: string; icon: string; hint: string }> = {
+  rock: { name: 'Rocks', icon: '🪨', hint: 'A hard bonk: most of your speed is gone for 1.5s. Swerve around it.' },
+  log: { name: 'Logs', icon: '🪵', hint: 'A soft bonk: a small wobble for 1s. A bubble shield takes any hit for you.' },
+  whirlpool: { name: 'Whirlpool', icon: '🌀', hint: 'Glub. A duck that paddles into it goes under and is out of the race. One per river, always in one lane. Shields save you.' },
+  tackle: { name: 'Tackles', icon: '💥', hint: 'Hop into a lane right beside a rival to shove them: they wobble for 1.2s, you lose a little pace.' },
+  draft: { name: 'Slipstream', icon: '💨', hint: 'Tuck in close behind a duck in your lane and you swim 12% faster.' },
 };

@@ -20,4 +20,5 @@ export default __t.row({
   place: __t.u32(),
   taps: __t.u32(),
   pos: __t.f64(),
+  drowned: __t.bool(),
 });
