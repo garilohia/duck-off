@@ -27,12 +27,14 @@ async function main(){
  const e=await connect();await e.reducers.joinRandom({name:'Newbie',duckIndex:4});
  assert.equal(roomOf(e),codeRoom,'a waiting room beats a racing one');
  console.log('PASS: racers stay put mid-race; newcomers prefer a room that is waiting to start.');
- await Promise.all(Array.from({length:12},async(_,i)=>{const x=await connect();await x.reducers.join({name:`Filler ${i}`,duckIndex:i%8,room:codeRoom})}));
+ await Promise.all(Array.from({length:10},async(_,i)=>{const x=await connect();await x.reducers.join({name:`Filler ${i}`,duckIndex:i%10,room:codeRoom})}));
  await until(()=>onlineIn(e,codeRoom)>=12);
  const f=await connect();await f.reducers.joinRandom({name:'Latecomer',duckIndex:5});
  assert.equal(roomOf(f),first,'a full room is skipped');
+ const g=await connect();await assert.rejects(g.reducers.join({name:'Overflow',duckIndex:6,room:codeRoom}),/full/);
+ assert.equal(roomOf(g),undefined,'a rejected join leaves no player row behind');
  assert.equal(f.db.racePlayer.identity.find(f.identity!)?.active,a.db.race.id.find(first)?.status==='finished','late arrivals spectate a live race');
- console.log('PASS: full rooms are skipped; late arrivals wait for the next race.');
+ console.log('PASS: full rooms are skipped by matching and refuse typed joins; late arrivals wait for the next race.');
  for(const x of clients)x.disconnect();console.log('ALL RANDOM ROOM CHECKS PASSED');
 }
 main().catch(e=>{console.error(e);for(const c of clients)c.disconnect();process.exitCode=1});

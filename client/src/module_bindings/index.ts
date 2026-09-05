@@ -36,7 +36,9 @@ import {
 // Import all reducer arg schemas
 import JoinReducer from "./join_reducer";
 import JoinRandomReducer from "./join_random_reducer";
+import LeaveRoomReducer from "./leave_room_reducer";
 import StartRaceReducer from "./start_race_reducer";
+import SwitchLaneReducer from "./switch_lane_reducer";
 import TapReducer from "./tap_reducer";
 import UseItemReducer from "./use_item_reducer";
 
@@ -47,6 +49,7 @@ import ItemEffectRow from "./item_effect_table";
 import PlayerRow from "./player_table";
 import PresenceRow from "./presence_table";
 import RaceRow from "./race_table";
+import RaceFeatureRow from "./race_feature_table";
 import RaceItemRow from "./race_item_table";
 import RacePlayerRow from "./race_player_table";
 import RaceResultRow from "./race_result_table";
@@ -105,6 +108,20 @@ const tablesSchema = __schema({
       { name: 'race_id_key', constraint: 'unique', columns: ['id'] },
     ],
   }, RaceRow),
+  raceFeature: __table({
+    name: 'race_feature',
+    indexes: [
+      { accessor: 'id', name: 'race_feature_id_idx_btree', algorithm: 'btree', columns: [
+        'id',
+      ] },
+      { accessor: 'room', name: 'race_feature_room_idx_btree', algorithm: 'btree', columns: [
+        'room',
+      ] },
+    ],
+    constraints: [
+      { name: 'race_feature_id_key', constraint: 'unique', columns: ['id'] },
+    ],
+  }, RaceFeatureRow),
   raceItem: __table({
     name: 'race_item',
     indexes: [
@@ -153,7 +170,9 @@ const tablesSchema = __schema({
 const reducersSchema = __reducers(
   __reducerSchema("join", JoinReducer),
   __reducerSchema("join_random", JoinRandomReducer),
+  __reducerSchema("leave_room", LeaveRoomReducer),
   __reducerSchema("start_race", StartRaceReducer),
+  __reducerSchema("switch_lane", SwitchLaneReducer),
   __reducerSchema("tap", TapReducer),
   __reducerSchema("use_item", UseItemReducer),
 );

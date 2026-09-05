@@ -11,18 +11,10 @@ import {
 } from "spacetimedb";
 
 export default __t.row({
-  identity: __t.identity().primaryKey(),
+  id: __t.u64().primaryKey(),
   room: __t.string(),
-  name: __t.string(),
-  duckIndex: __t.u8().name("duck_index"),
-  active: __t.bool(),
+  kind: __t.string(),
   lane: __t.u8(),
   pos: __t.f64(),
-  vel: __t.f64(),
-  taps: __t.u32(),
-  boostMeter: __t.u32().name("boost_meter"),
-  boostTicksLeft: __t.u32().name("boost_ticks_left"),
-  place: __t.u32(),
-  rank: __t.u32(),
-  lastTapAt: __t.u64().name("last_tap_at"),
+  seq: __t.u32(),
 });

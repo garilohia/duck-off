@@ -1,33 +1,38 @@
 import {useState} from 'react';
 import DuckPreview from './three/DuckPreview';
-import {DUCKS} from './palette';
+import {DUCKS,DUCK_COUNT} from './palette';
 import {unlockAudio,squeak} from './squeak';
-type Props={onJoin:(name:string,index:number,room:string)=>Promise<void>;onRandomJoin:(name:string,index:number)=>Promise<void>;error?:string;initialRoom:string;onCancel?:()=>void};
-export default function NameEntry({onJoin,onRandomJoin,error,initialRoom,onCancel}:Props){
+type Mode='random'|'code';
+type Props={onJoin:(name:string,index:number,room:string)=>Promise<void>;onRandomJoin:(name:string,index:number)=>Promise<void>;error?:string;initialRoom:string};
+export default function NameEntry({onJoin,onRandomJoin,error,initialRoom}:Props){
  const [room,setRoom]=useState(initialRoom);
- // A shared link or an existing room pre-selects the code path; newcomers get random matching.
- const [useCode,setUseCode]=useState(!!initialRoom);
- const [index,setIndex]=useState(()=>{const saved=Number(localStorage.getItem('duckoff_duck'));return Number.isInteger(saved)&&saved>=0&&saved<8?saved:0;});
+ // A shared link pre-selects the code path; everyone else gets random matching.
+ const [mode,setMode]=useState<Mode>(initialRoom?'code':'random');
+ const [index,setIndex]=useState(()=>{const saved=Number(localStorage.getItem('duckoff_duck'));return Number.isInteger(saved)&&saved>=0&&saved<DUCK_COUNT?saved:0;});
  const [name,setName]=useState(()=>localStorage.getItem('duckoff_name')??''),[busy,setBusy]=useState(false);
  const choose=(i:number)=>{unlockAudio();setIndex(i);squeak(i,.12)};
+ const duck=DUCKS[index],useCode=mode==='code';
+ const submit=async()=>{if(mode==='code')await onJoin(name,index,room);else await onRandomJoin(name,index)};
+ const label=busy?(mode==='code'?'Hopping in…':'Finding your flock…'):(mode==='code'?'Join this room':'Join a random room');
  return <main className="entry-screen">
   <header className="entry-top"><span className="brand-mini">duck off<span>!</span></span><span className="live-pill"><i/> a little friendly rivalry</span></header>
   <div className="entry-content">
    <div className="entry-heading"><div className="eyebrow">TINY DUCKS. BIG HEART.</div><h1 className="logo">duck off<span>!</span></h1><p>Your new favourite little race.</p><div className="tagline">Pick a friend. Bring your friends. Make a splash.</div></div>
    <section className="entry-card" aria-label="Choose your duck and room">
-    <div className="character-pane"><div className="card-heading"><span>MEET YOUR LITTLE DUCK</span><span>0{index+1} / 08</span></div>
-     <div className="picker"><div className="preview-water"><DuckPreview index={index}/></div><button className="arrow prev" aria-label="Previous duck" onClick={()=>choose((index+7)%8)}>‹</button><button className="arrow next" aria-label="Next duck" onClick={()=>choose((index+1)%8)}>›</button><span className="toy-sticker">very<br/>huggable</span></div>
-     <div className="character-info" aria-live="polite"><h2>{DUCKS[index][0]}</h2><span>{DUCKS[index][1]}</span></div>
-     <div className="picker-dots" aria-label="Duck characters">{DUCKS.map((d,i)=><button key={d[0]} aria-label={d[0]} aria-pressed={i===index} onClick={()=>choose(i)} className={i===index?'selected':''}><span/></button>)}</div>
+    <div className="character-pane"><div className="card-heading"><span>MEET YOUR LITTLE DUCK</span><span>{String(index+1).padStart(2,'0')} / {String(DUCK_COUNT).padStart(2,'0')}</span></div>
+     <div className="picker"><div className="preview-water"><DuckPreview index={index} spinnable/></div><button className="arrow prev" aria-label="Previous duck" onClick={()=>choose((index+DUCK_COUNT-1)%DUCK_COUNT)}>‹</button><button className="arrow next" aria-label="Next duck" onClick={()=>choose((index+1)%DUCK_COUNT)}>›</button><span className="spin-hint" aria-hidden="true">↔ drag to twirl</span><span className="toy-sticker" key={index} aria-hidden="true">{duck.sticker.split(' ').map((word,i)=><b key={i}>{word}</b>)}</span></div>
+     <div className="character-info" aria-live="polite"><h2>{duck.name}</h2><span>{duck.tagline}</span><span className="visually-hidden">{duck.sticker}</span></div>
+     <div className="picker-dots" aria-label="Duck characters">{DUCKS.map((d,i)=><button key={d.name} aria-label={d.name} aria-pressed={i===index} onClick={()=>choose(i)} className={i===index?'selected':''}><span/></button>)}</div>
     </div>
-    <form onSubmit={async e=>{e.preventDefault();unlockAudio();squeak(index);setBusy(true);try{if(useCode)await onJoin(name,index,room);else await onRandomJoin(name,index)}finally{setBusy(false)}}}>
+    <form onSubmit={async e=>{e.preventDefault();unlockAudio();squeak(index);setBusy(true);try{await submit()}finally{setBusy(false)}}}>
      <label htmlFor="duck-name">Your duck’s name</label><div className="name-input"><input id="duck-name" placeholder="e.g. Waddles" maxLength={14} value={name} onChange={e=>setName(e.target.value)} autoComplete="nickname" enterKeyHint={useCode?'next':'go'}/><span>{name.length}/14</span></div>
-     {useCode&&<><label className="room-label" htmlFor="room-code">Room code <span>Same code, same lagoon.</span></label><div className="name-input"><input id="room-code" value={room} placeholder="e.g. SUNNY-DUCKS" maxLength={16} pattern="[A-Za-z0-9-]{1,16}" required onChange={e=>setRoom(e.target.value.toUpperCase())} autoComplete="off" autoCapitalize="characters" spellCheck={false} enterKeyHint="go"/></div><p className="room-help">An unused code opens a brand new room.</p></>}
+     {useCode&&<><label className="room-label" htmlFor="room-code">Room code <span>Same code, same lagoon.</span></label><div className="name-input"><input id="room-code" value={room} placeholder="e.g. SUNNY-DUCKS" maxLength={16} pattern="[A-Za-z0-9\-]{1,16}" required onChange={e=>setRoom(e.target.value.toUpperCase())} autoComplete="off" autoCapitalize="characters" spellCheck={false} enterKeyHint="go"/></div><p className="room-help">An unused code opens a brand new room. Rooms hold up to 12 ducks.</p></>}
      {error&&<p className="form-error" role="alert">{error}</p>}
-     <button className="primary" disabled={busy}>{busy?(useCode?'Hopping in…':'Finding your flock…'):(useCode?'Join this room':'Join a random room')} <span aria-hidden="true">↗</span></button>
-     <button type="button" className="text-button room-mode" disabled={busy} onClick={()=>setUseCode(!useCode)}>{useCode?'Join a random room instead':'Have a room code?'}</button>
-     {onCancel&&<button type="button" className="text-button" onClick={onCancel}>Back to the race</button>}
-     <p className="entry-note">{useCode?'Share the code with friends. Start when you’re ready.':'We’ll find a room with other ducks somewhere in the world. If the river is quiet, you’ll open one for the next duck to find.'}</p>
+     <button className="primary" disabled={busy}>{label} <span aria-hidden="true">↗</span></button>
+     <div className="mode-links">
+      <button type="button" className="text-button room-mode" disabled={busy} onClick={()=>setMode(useCode?'random':'code')}>{useCode?'Join a random room instead':'Have a room code?'}</button>
+     </div>
+     <p className="entry-note">{mode==='code'?'Share the code with friends. Start when you’re ready.':'We’ll find a room with other ducks somewhere in the world. If the river is quiet, you’ll open one for the next duck to find.'}</p>
     </form>
    </section>
   </div><footer className="entry-footer"><span>Made for little moments together.</span><span>Sound on for tiny squeaks ♫</span></footer>

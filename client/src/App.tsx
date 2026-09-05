@@ -7,42 +7,49 @@ import NameEntry from './NameEntry';
 import RaceScreen from './RaceScreen';
 function Game(){
  const {isActive,identity,connectionError,getConnection}=useSpacetimeDB();
- const [linkedRoom]=useState(()=>new URLSearchParams(location.search).get('room')?.trim().toUpperCase()||'');
+ const [linkedRoom,setLinkedRoom]=useState(()=>new URLSearchParams(location.search).get('room')?.trim().toUpperCase()||'');
  const [room,setRoom]=useState(linkedRoom||'PUBLIC');
+ // Only rooms the player typed (or followed a link to) are treated as a code they know.
+ // Randomly matched rooms get generated names, which must never reappear as a "room code".
+ const [viaCode,setViaCode]=useState(!!linkedRoom);
  const [races,raceReady]=useTable(tables.race.where(r=>r.id.eq(room)));
  const [players,playersReady]=useTable(tables.racePlayer.where(p=>p.room.eq(room)));
  const [legends,legendsReady]=useTable(tables.player.where(p=>p.room.eq(room)));
  const [results]=useTable(tables.raceResult.where(p=>p.room.eq(room)));
  const [items]=useTable(tables.raceItem.where(p=>p.room.eq(room)));
  const [effects]=useTable(tables.itemEffect.where(p=>p.room.eq(room)));
+ const [features]=useTable(tables.raceFeature.where(p=>p.room.eq(room)));
  // Our own player row follows us across rooms, so random matching can read the server's assignment.
  const [,selfReady]=useTable(tables.player.where(p=>p.identity.eq(identity??new Identity(0n))),{enabled:!!identity});
  const join=useReducer(reducers.join),joinRandom=useReducer(reducers.joinRandom),tap=useReducer(reducers.tap),start=useReducer(reducers.startRace);
- const useItem=useReducer(reducers.useItem);
- const [entered,setEntered]=useState(false),[error,setError]=useState(''),[editing,setEditing]=useState(false),[slow,setSlow]=useState(false);
+ const useItem=useReducer(reducers.useItem),leaveRoom=useReducer(reducers.leaveRoom),switchLane=useReducer(reducers.switchLane);
+ const [entered,setEntered]=useState(false),[error,setError]=useState(''),[slow,setSlow]=useState(false);
  useEffect(()=>{if(isActive){setSlow(false);return;}const timer=setTimeout(()=>setSlow(true),10000);return()=>clearTimeout(timer)},[isActive]);
- const finishJoin=(name:string,duckIndex:number,nextRoom:string)=>{
-  setRoom(nextRoom);
-  const url=new URL(location.href);url.searchParams.set('room',nextRoom);history.replaceState(null,'',url);
+ const finishJoin=(name:string,duckIndex:number,nextRoom:string,byCode:boolean)=>{
+  setRoom(nextRoom);setViaCode(byCode);
+  const url=new URL(location.href);if(byCode)url.searchParams.set('room',nextRoom);else url.searchParams.delete('room');history.replaceState(null,'',url);
   localStorage.setItem('duckoff_name',name.trim()||'Duck');localStorage.setItem('duckoff_duck',String(duckIndex));
-  setEntered(true);setEditing(false);setError('');
+  setEntered(true);setError('');
  };
- const joinGame=async(name:string,duckIndex:number,selectedRoom=room)=>{
+ const joinGame=async(name:string,duckIndex:number,selectedRoom=room,byCode=true)=>{
   const nextRoom=selectedRoom.trim().toUpperCase()||'PUBLIC';
-  await join({name,duckIndex,room:nextRoom});finishJoin(name,duckIndex,nextRoom);
+  await join({name,duckIndex,room:nextRoom});finishJoin(name,duckIndex,nextRoom,byCode);
  };
  const findRoom=async(name:string,duckIndex:number)=>{
   await joinRandom({name,duckIndex});
   // The reducer result applies its row updates before resolving, so our row already names the room.
   const assignment=identity?(getConnection() as DbConnection|null)?.db.player.identity.find(identity):undefined;
   if(!assignment)throw new Error('Your room is still connecting. Please try again.');
-  finishJoin(name,duckIndex,assignment.room);
+  finishJoin(name,duckIndex,assignment.room,false);
  };
- useGameTools({connected:isActive,race:races[0],items:items.map(i=>({...i,identity:i.identity.toHexString()})),players:players.map(p=>({name:p.name,active:p.active,pos:p.pos,place:p.place,rank:p.rank,taps:p.taps}))},joinGame,()=>tap(),()=>start(),()=>useItem());
+ // Main menu: leave the results behind and start over with a clean entry screen (random matching by default).
+ const leave=()=>{void leaveRoom().catch(()=>{});setEntered(false);setViaCode(false);setLinkedRoom('');setError('');const url=new URL(location.href);url.searchParams.delete('room');history.replaceState(null,'',url);};
+ const friendly=(e:unknown,fallback:string)=>e instanceof Error&&e.message?e.message:fallback;
+ useGameTools({connected:isActive,race:races[0],items:items.map(i=>({...i,identity:i.identity.toHexString()})),features:features.map(f=>({kind:f.kind,lane:f.lane,pos:f.pos})),players:players.map(p=>({name:p.name,active:p.active,lane:p.lane,pos:p.pos,place:p.place,rank:p.rank,taps:p.taps}))},(name,index)=>joinGame(name,index,room,viaCode),()=>tap(),()=>start(),()=>useItem(),direction=>switchLane({direction}));
  if(!isActive||!identity||!selfReady||!raceReady||!playersReady||!legendsReady)return <main className="splash"><div className="splash-duck" aria-hidden="true">🦆</div><h1>{connectionError||slow?'A little ripple in the connection':'Filling the little lagoon…'}</h1><p>{connectionError||slow?'Your duck is safe. Check your connection and try again.':'Getting the water just right for you.'}</p>{(connectionError||slow)&&<button className="primary" onClick={()=>location.reload()}>Try again ↻</button>}</main>;
- if(!entered||editing)return <NameEntry initialRoom={editing?room:linkedRoom} error={error} onCancel={editing?()=>{setEditing(false);setError('')}:undefined} onJoin={async(name,index,nextRoom)=>{try{await joinGame(name,index,nextRoom)}catch(e){setError(e instanceof Error?e.message:'Couldn’t hop in. Please try again.')}}} onRandomJoin={async(name,index)=>{try{await findRoom(name,index)}catch(e){setError(e instanceof Error?e.message:'Couldn’t find a room. Please try again.')}}}/>;
+ if(!entered)return <NameEntry initialRoom={linkedRoom} error={error} onJoin={async(name,index,nextRoom)=>{try{await joinGame(name,index,nextRoom)}catch(e){setError(friendly(e,'Couldn’t hop in. Please try again.'))}}} onRandomJoin={async(name,index)=>{try{await findRoom(name,index)}catch(e){setError(friendly(e,'Couldn’t find a room. Please try again.'))}}}/>;
  if(!races[0])return <main className="splash"><h1>Opening room {room}…</h1><button className="primary" onClick={()=>setEntered(false)}>Back to my duck</button></main>;
- return <RaceScreen race={races[0]} players={players} legends={legends} items={items} effects={effects} results={results.filter(r=>r.raceNumber===races[0].raceNumber)} identity={identity.toHexString()} onTap={()=>tap()} onStart={()=>start()} onUseItem={()=>useItem()} onEdit={()=>setEditing(true)}/>;
+ return <RaceScreen race={races[0]} players={players} legends={legends} items={items} effects={effects} features={features} results={results.filter(r=>r.raceNumber===races[0].raceNumber)} identity={identity.toHexString()} onTap={()=>tap()} onStart={()=>start()} onUseItem={()=>useItem()} onSwitchLane={direction=>switchLane({direction})} onLeave={leave}/>;
 }
 export default function App(){
  const builder=useMemo(()=>{
