@@ -43,6 +43,7 @@ export default function RaceScreen(props: Props) {
   const [showRanks, setShowRanks] = useState(false);
   const [usingItem, setUsingItem] = useState(false);
   const [showHowTo, setShowHowTo] = useState(() => !readFlag(PREF.howTo));
+  const [confirmLeave, setConfirmLeave] = useState(false);
   const itemPending = useRef(false);
 
   const touch = touchDevice();
@@ -101,6 +102,7 @@ export default function RaceScreen(props: Props) {
   useEffect(() => {
     setShowRanks(false);
     setError('');
+    setConfirmLeave(false);
   }, [race.status]);
 
   // A practice river is single-player: it starts by itself once the instructions are out of the way.
@@ -292,6 +294,13 @@ export default function RaceScreen(props: Props) {
           </button>
         </div>
         <div className="header-actions">
+          <button
+            className="leave-button"
+            aria-label={canDrive ? 'Leave the race' : 'Leave the room'}
+            onClick={() => (canDrive ? setConfirmLeave(true) : onLeave())}
+          >
+            <span aria-hidden="true">←</span> Leave
+          </button>
           <button
             className="icon-button"
             aria-label={muted ? 'Unmute squeaks' : 'Mute squeaks'}
@@ -498,6 +507,17 @@ export default function RaceScreen(props: Props) {
             </section>
             {resultsActions}
           </section>
+        </div>
+      )}
+      {confirmLeave && (
+        <div className="connection-warning leave-confirm" role="alertdialog" aria-label="Leave the race?">
+          <span>Leave the race? Your duck drops out and the others race on.</span>
+          <button className="text-button" onClick={() => setConfirmLeave(false)}>
+            Stay
+          </button>
+          <button className="primary small" onClick={onLeave}>
+            Leave
+          </button>
         </div>
       )}
       {error && (

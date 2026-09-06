@@ -99,6 +99,10 @@ export default function HowTo({ touch, motionGranted, onDismiss }: Props) {
             <b>Barge into a rival.</b>
             <span>Slide into a duck beside you and they wobble. A shield blocks any hit.</span>
           </li>
+          <li>
+            <b>Leave whenever you like.</b>
+            <span>The Leave button at the top right (or the duck off! logo) takes you back to the home screen.</span>
+          </li>
         </ul>
         {touch && !motionGranted && (
           <p className="howto-note">Allow motion access when asked, that is what makes tilt steering work.</p>
