@@ -1,0 +1,33 @@
+{
+  "id": "/",
+  "name": "Duck Off",
+  "short_name": "Duck Off",
+  "description": "Race rubber ducks with friends in your browser. Tap to paddle, dodge obstacles, and use toys to race ahead in a real-time multiplayer duck race.",
+  "lang": "en",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#fce4d9",
+  "theme_color": "#fce4d9",
+  "categories": ["games", "entertainment"],
+  "icons": [
+    {
+      "src": "/android-chrome-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/android-chrome-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/maskable-icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
