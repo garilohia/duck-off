@@ -310,7 +310,25 @@ export default function RaceScreen(props: Props) {
               setMuted(!muted);
             }}
           >
-            {muted ? '♪̸' : '♫'}
+            <svg className="megaphone" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+              <path
+                d="M3 10v4a1 1 0 0 0 1 1h3l6 4V5L7 9H4a1 1 0 0 0-1 1Z"
+                fill="currentColor"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinejoin="round"
+              />
+              <path
+                d="M16.5 9.5a3.5 3.5 0 0 1 0 5M18.8 7a7 7 0 0 1 0 10"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+              />
+              {muted && (
+                <path d="M3.5 20.5 20.5 3.5" fill="none" stroke="var(--coral, #e8613c)" strokeWidth="2.4" strokeLinecap="round" />
+              )}
+            </svg>
           </button>
         </div>
       </header>

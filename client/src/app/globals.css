@@ -546,11 +546,19 @@ form label span {
   right: 24px;
   z-index: 4;
   display: flex;
-  justify-content: space-between;
+  justify-content: center;
   align-items: center;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 8px 14px;
   font-size: 12px;
   pointer-events: none;
+  text-align: center;
+}
+.room-strip button {
+  pointer-events: auto;
+}
+.megaphone {
+  display: block;
 }
 .room-strip b {
   font-size: 14px;
