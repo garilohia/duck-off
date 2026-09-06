@@ -30,8 +30,6 @@ npm run format        # prettier over client, tests and module
 npm run typecheck && npm run typecheck:server
 ```
 
-GitHub Actions runs the same checks plus the integration suites on every push and pull request (`.github/workflows/ci.yml`).
-
 ## Ship
 
 - Site: push to `main`; Vercel builds `client/` via the root `vercel.json`.
