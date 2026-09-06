@@ -9,6 +9,9 @@
     "server": "spacetime start --listen-addr 0.0.0.0:3030",
     "publish:local": "spacetime publish --server http://127.0.0.1:3030 --module-path server/spacetimedb duckoff -y",
     "publish:live": "spacetime publish --module-path server/spacetimedb duckoff-rooms-gari-20260905 -y",
-    "generate": "spacetime generate --lang typescript --module-path server/spacetimedb --out-dir client/src/module_bindings"
+    "generate": "spacetime generate --lang typescript --module-path server/spacetimedb --out-dir client/src/module_bindings",
+    "format": "npm --prefix client run format",
+    "format:check": "npm --prefix client run format:check",
+    "typecheck:server": "npx --prefix server/spacetimedb tsc --noEmit -p server/spacetimedb"
   }
 }

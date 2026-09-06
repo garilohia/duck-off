@@ -8,19 +8,21 @@ import {
   t as __t,
   type AlgebraicTypeType as __AlgebraicTypeType,
   type Infer as __Infer,
-} from "spacetimedb";
+} from 'spacetimedb';
 
 export default __t.row({
   id: __t.string().primaryKey(),
   status: __t.string(),
-  phaseTicksLeft: __t.u32().name("phase_ticks_left"),
-  finishCounter: __t.u32().name("finish_counter"),
-  raceNumber: __t.u32().name("race_number"),
-  winnerName: __t.string().name("winner_name"),
-  winnerDuckIndex: __t.u8().name("winner_duck_index"),
-  idleTicks: __t.u32().name("idle_ticks"),
+  phaseTicksLeft: __t.u32().name('phase_ticks_left'),
+  finishCounter: __t.u32().name('finish_counter'),
+  raceNumber: __t.u32().name('race_number'),
+  winnerName: __t.string().name('winner_name'),
+  winnerDuckIndex: __t.u8().name('winner_duck_index'),
+  idleTicks: __t.u32().name('idle_ticks'),
   forfeited: __t.bool(),
-  forfeitReason: __t.string().name("forfeit_reason"),
+  forfeitReason: __t.string().name('forfeit_reason'),
   solo: __t.bool(),
-  hostIdentity: __t.string().name("host_identity"),
+  hostIdentity: __t.string().name('host_identity'),
+  mode: __t.string(),
+  elapsedTicks: __t.u32().name('elapsed_ticks'),
 });

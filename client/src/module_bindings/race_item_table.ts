@@ -8,13 +8,13 @@ import {
   t as __t,
   type AlgebraicTypeType as __AlgebraicTypeType,
   type Infer as __Infer,
-} from "spacetimedb";
+} from 'spacetimedb';
 
 export default __t.row({
   identity: __t.identity().primaryKey(),
   room: __t.string(),
   held: __t.string(),
-  slowTicks: __t.u32().name("slow_ticks"),
-  shieldTicks: __t.u32().name("shield_ticks"),
-  turboTicks: __t.u32().name("turbo_ticks"),
+  slowTicks: __t.u32().name('slow_ticks'),
+  shieldTicks: __t.u32().name('shield_ticks'),
+  turboTicks: __t.u32().name('turbo_ticks'),
 });

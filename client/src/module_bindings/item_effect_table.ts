@@ -8,7 +8,7 @@ import {
   t as __t,
   type AlgebraicTypeType as __AlgebraicTypeType,
   type Infer as __Infer,
-} from "spacetimedb";
+} from 'spacetimedb';
 
 export default __t.row({
   id: __t.u64().primaryKey(),
@@ -16,9 +16,9 @@ export default __t.row({
   source: __t.identity(),
   target: __t.identity(),
   kind: __t.string(),
-  sourcePos: __t.f64().name("source_pos"),
-  targetPos: __t.f64().name("target_pos"),
-  flightTicks: __t.u32().name("flight_ticks"),
-  lifeTicks: __t.u32().name("life_ticks"),
+  sourcePos: __t.f64().name('source_pos'),
+  targetPos: __t.f64().name('target_pos'),
+  flightTicks: __t.u32().name('flight_ticks'),
+  lifeTicks: __t.u32().name('life_ticks'),
   blocked: __t.bool(),
 });

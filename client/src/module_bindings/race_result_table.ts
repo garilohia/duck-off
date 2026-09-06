@@ -8,15 +8,15 @@ import {
   t as __t,
   type AlgebraicTypeType as __AlgebraicTypeType,
   type Infer as __Infer,
-} from "spacetimedb";
+} from 'spacetimedb';
 
 export default __t.row({
   id: __t.string().primaryKey(),
   room: __t.string(),
-  raceNumber: __t.u32().name("race_number"),
+  raceNumber: __t.u32().name('race_number'),
   identity: __t.identity(),
   name: __t.string(),
-  duckIndex: __t.u8().name("duck_index"),
+  duckIndex: __t.u8().name('duck_index'),
   place: __t.u32(),
   taps: __t.u32(),
   pos: __t.f64(),

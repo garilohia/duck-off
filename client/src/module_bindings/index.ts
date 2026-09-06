@@ -31,185 +31,158 @@ import {
   type RemoteModule as __RemoteModule,
   type SubscriptionEventContextInterface as __SubscriptionEventContextInterface,
   type SubscriptionHandleImpl as __SubscriptionHandleImpl,
-} from "spacetimedb";
+} from 'spacetimedb';
 
 // Import all reducer arg schemas
-import HeartbeatReducer from "./heartbeat_reducer";
-import JoinReducer from "./join_reducer";
-import JoinRandomReducer from "./join_random_reducer";
-import LeaveRoomReducer from "./leave_room_reducer";
-import StartRaceReducer from "./start_race_reducer";
-import SteerReducer from "./steer_reducer";
-import SwitchLaneReducer from "./switch_lane_reducer";
-import TapReducer from "./tap_reducer";
-import UseItemReducer from "./use_item_reducer";
+import HeartbeatReducer from './heartbeat_reducer';
+import JoinReducer from './join_reducer';
+import JoinRandomReducer from './join_random_reducer';
+import LeaveRoomReducer from './leave_room_reducer';
+import StartPracticeReducer from './start_practice_reducer';
+import StartRaceReducer from './start_race_reducer';
+import SteerReducer from './steer_reducer';
+import SwitchLaneReducer from './switch_lane_reducer';
+import TapReducer from './tap_reducer';
+import UseItemReducer from './use_item_reducer';
 
 // Import all procedure arg schemas
 
 // Import all table schema definitions
-import ItemEffectRow from "./item_effect_table";
-import PlayerRow from "./player_table";
-import PresenceRow from "./presence_table";
-import RaceRow from "./race_table";
-import RaceFeatureRow from "./race_feature_table";
-import RaceItemRow from "./race_item_table";
-import RacePlayerRow from "./race_player_table";
-import RaceResultRow from "./race_result_table";
-import StatsRow from "./stats_table";
+import ItemEffectRow from './item_effect_table';
+import PlayerRow from './player_table';
+import PresenceRow from './presence_table';
+import RaceRow from './race_table';
+import RaceFeatureRow from './race_feature_table';
+import RaceItemRow from './race_item_table';
+import RacePlayerRow from './race_player_table';
+import RaceResultRow from './race_result_table';
+import StatsRow from './stats_table';
 
 /** Type-only namespace exports for generated type groups. */
 
 /** The schema information for all tables in this module. This is defined the same was as the tables would have been defined in the server. */
 const tablesSchema = __schema({
-  itemEffect: __table({
-    name: 'item_effect',
-    indexes: [
-      { accessor: 'id', name: 'item_effect_id_idx_btree', algorithm: 'btree', columns: [
-        'id',
-      ] },
-      { accessor: 'room', name: 'item_effect_room_idx_btree', algorithm: 'btree', columns: [
-        'room',
-      ] },
-    ],
-    constraints: [
-      { name: 'item_effect_id_key', constraint: 'unique', columns: ['id'] },
-    ],
-  }, ItemEffectRow),
-  player: __table({
-    name: 'player',
-    indexes: [
-      { accessor: 'identity', name: 'player_identity_idx_btree', algorithm: 'btree', columns: [
-        'identity',
-      ] },
-      { accessor: 'room', name: 'player_room_idx_btree', algorithm: 'btree', columns: [
-        'room',
-      ] },
-    ],
-    constraints: [
-      { name: 'player_identity_key', constraint: 'unique', columns: ['identity'] },
-    ],
-  }, PlayerRow),
-  presence: __table({
-    name: 'presence',
-    indexes: [
-      { accessor: 'connectionId', name: 'presence_connection_id_idx_btree', algorithm: 'btree', columns: [
-        'connectionId',
-      ] },
-    ],
-    constraints: [
-      { name: 'presence_connection_id_key', constraint: 'unique', columns: ['connectionId'] },
-    ],
-  }, PresenceRow),
-  race: __table({
-    name: 'race',
-    indexes: [
-      { accessor: 'id', name: 'race_id_idx_btree', algorithm: 'btree', columns: [
-        'id',
-      ] },
-    ],
-    constraints: [
-      { name: 'race_id_key', constraint: 'unique', columns: ['id'] },
-    ],
-  }, RaceRow),
-  raceFeature: __table({
-    name: 'race_feature',
-    indexes: [
-      { accessor: 'id', name: 'race_feature_id_idx_btree', algorithm: 'btree', columns: [
-        'id',
-      ] },
-      { accessor: 'room', name: 'race_feature_room_idx_btree', algorithm: 'btree', columns: [
-        'room',
-      ] },
-    ],
-    constraints: [
-      { name: 'race_feature_id_key', constraint: 'unique', columns: ['id'] },
-    ],
-  }, RaceFeatureRow),
-  raceItem: __table({
-    name: 'race_item',
-    indexes: [
-      { accessor: 'identity', name: 'race_item_identity_idx_btree', algorithm: 'btree', columns: [
-        'identity',
-      ] },
-      { accessor: 'room', name: 'race_item_room_idx_btree', algorithm: 'btree', columns: [
-        'room',
-      ] },
-    ],
-    constraints: [
-      { name: 'race_item_identity_key', constraint: 'unique', columns: ['identity'] },
-    ],
-  }, RaceItemRow),
-  racePlayer: __table({
-    name: 'race_player',
-    indexes: [
-      { accessor: 'identity', name: 'race_player_identity_idx_btree', algorithm: 'btree', columns: [
-        'identity',
-      ] },
-      { accessor: 'room', name: 'race_player_room_idx_btree', algorithm: 'btree', columns: [
-        'room',
-      ] },
-    ],
-    constraints: [
-      { name: 'race_player_identity_key', constraint: 'unique', columns: ['identity'] },
-    ],
-  }, RacePlayerRow),
-  raceResult: __table({
-    name: 'race_result',
-    indexes: [
-      { accessor: 'id', name: 'race_result_id_idx_btree', algorithm: 'btree', columns: [
-        'id',
-      ] },
-      { accessor: 'room', name: 'race_result_room_idx_btree', algorithm: 'btree', columns: [
-        'room',
-      ] },
-    ],
-    constraints: [
-      { name: 'race_result_id_key', constraint: 'unique', columns: ['id'] },
-    ],
-  }, RaceResultRow),
-  stats: __table({
-    name: 'stats',
-    indexes: [
-      { accessor: 'id', name: 'stats_id_idx_btree', algorithm: 'btree', columns: [
-        'id',
-      ] },
-    ],
-    constraints: [
-      { name: 'stats_id_key', constraint: 'unique', columns: ['id'] },
-    ],
-  }, StatsRow),
+  itemEffect: __table(
+    {
+      name: 'item_effect',
+      indexes: [
+        { accessor: 'id', name: 'item_effect_id_idx_btree', algorithm: 'btree', columns: ['id'] },
+        { accessor: 'room', name: 'item_effect_room_idx_btree', algorithm: 'btree', columns: ['room'] },
+      ],
+      constraints: [{ name: 'item_effect_id_key', constraint: 'unique', columns: ['id'] }],
+    },
+    ItemEffectRow,
+  ),
+  player: __table(
+    {
+      name: 'player',
+      indexes: [
+        { accessor: 'identity', name: 'player_identity_idx_btree', algorithm: 'btree', columns: ['identity'] },
+        { accessor: 'online', name: 'player_online_idx_btree', algorithm: 'btree', columns: ['online'] },
+        { accessor: 'room', name: 'player_room_idx_btree', algorithm: 'btree', columns: ['room'] },
+      ],
+      constraints: [{ name: 'player_identity_key', constraint: 'unique', columns: ['identity'] }],
+    },
+    PlayerRow,
+  ),
+  presence: __table(
+    {
+      name: 'presence',
+      indexes: [
+        { accessor: 'connectionId', name: 'presence_connection_id_idx_btree', algorithm: 'btree', columns: ['connectionId'] },
+      ],
+      constraints: [{ name: 'presence_connection_id_key', constraint: 'unique', columns: ['connectionId'] }],
+    },
+    PresenceRow,
+  ),
+  race: __table(
+    {
+      name: 'race',
+      indexes: [{ accessor: 'id', name: 'race_id_idx_btree', algorithm: 'btree', columns: ['id'] }],
+      constraints: [{ name: 'race_id_key', constraint: 'unique', columns: ['id'] }],
+    },
+    RaceRow,
+  ),
+  raceFeature: __table(
+    {
+      name: 'race_feature',
+      indexes: [
+        { accessor: 'id', name: 'race_feature_id_idx_btree', algorithm: 'btree', columns: ['id'] },
+        { accessor: 'room', name: 'race_feature_room_idx_btree', algorithm: 'btree', columns: ['room'] },
+      ],
+      constraints: [{ name: 'race_feature_id_key', constraint: 'unique', columns: ['id'] }],
+    },
+    RaceFeatureRow,
+  ),
+  raceItem: __table(
+    {
+      name: 'race_item',
+      indexes: [
+        { accessor: 'identity', name: 'race_item_identity_idx_btree', algorithm: 'btree', columns: ['identity'] },
+        { accessor: 'room', name: 'race_item_room_idx_btree', algorithm: 'btree', columns: ['room'] },
+      ],
+      constraints: [{ name: 'race_item_identity_key', constraint: 'unique', columns: ['identity'] }],
+    },
+    RaceItemRow,
+  ),
+  racePlayer: __table(
+    {
+      name: 'race_player',
+      indexes: [
+        { accessor: 'identity', name: 'race_player_identity_idx_btree', algorithm: 'btree', columns: ['identity'] },
+        { accessor: 'room', name: 'race_player_room_idx_btree', algorithm: 'btree', columns: ['room'] },
+      ],
+      constraints: [{ name: 'race_player_identity_key', constraint: 'unique', columns: ['identity'] }],
+    },
+    RacePlayerRow,
+  ),
+  raceResult: __table(
+    {
+      name: 'race_result',
+      indexes: [
+        { accessor: 'id', name: 'race_result_id_idx_btree', algorithm: 'btree', columns: ['id'] },
+        { accessor: 'room', name: 'race_result_room_idx_btree', algorithm: 'btree', columns: ['room'] },
+      ],
+      constraints: [{ name: 'race_result_id_key', constraint: 'unique', columns: ['id'] }],
+    },
+    RaceResultRow,
+  ),
+  stats: __table(
+    {
+      name: 'stats',
+      indexes: [{ accessor: 'id', name: 'stats_id_idx_btree', algorithm: 'btree', columns: ['id'] }],
+      constraints: [{ name: 'stats_id_key', constraint: 'unique', columns: ['id'] }],
+    },
+    StatsRow,
+  ),
 });
 
 /** The schema information for all reducers in this module. This is defined the same way as the reducers would have been defined in the server, except the body of the reducer is omitted in code generation. */
 const reducersSchema = __reducers(
-  __reducerSchema("heartbeat", HeartbeatReducer),
-  __reducerSchema("join", JoinReducer),
-  __reducerSchema("join_random", JoinRandomReducer),
-  __reducerSchema("leave_room", LeaveRoomReducer),
-  __reducerSchema("start_race", StartRaceReducer),
-  __reducerSchema("steer", SteerReducer),
-  __reducerSchema("switch_lane", SwitchLaneReducer),
-  __reducerSchema("tap", TapReducer),
-  __reducerSchema("use_item", UseItemReducer),
+  __reducerSchema('heartbeat', HeartbeatReducer),
+  __reducerSchema('join', JoinReducer),
+  __reducerSchema('join_random', JoinRandomReducer),
+  __reducerSchema('leave_room', LeaveRoomReducer),
+  __reducerSchema('start_practice', StartPracticeReducer),
+  __reducerSchema('start_race', StartRaceReducer),
+  __reducerSchema('steer', SteerReducer),
+  __reducerSchema('switch_lane', SwitchLaneReducer),
+  __reducerSchema('tap', TapReducer),
+  __reducerSchema('use_item', UseItemReducer),
 );
 
 /** The schema information for all procedures in this module. This is defined the same way as the procedures would have been defined in the server. */
-const proceduresSchema = __procedures(
-);
+const proceduresSchema = __procedures();
 
 /** The remote SpacetimeDB module schema, both runtime and type information. */
 const REMOTE_MODULE = {
   versionInfo: {
-    cliVersion: "2.9.0" as const,
+    cliVersion: '2.9.0' as const,
   },
   tables: tablesSchema.schemaType.tables,
   reducers: reducersSchema.reducersType.reducers,
   ...proceduresSchema,
-} satisfies __RemoteModule<
-  typeof tablesSchema.schemaType,
-  typeof reducersSchema.reducersType,
-  typeof proceduresSchema
->;
+} satisfies __RemoteModule<typeof tablesSchema.schemaType, typeof reducersSchema.reducersType, typeof proceduresSchema>;
 
 /** The tables available in this remote SpacetimeDB module. Each table reference doubles as a query builder. */
 export const tables: __QueryBuilder<typeof tablesSchema.schemaType> = __makeQueryBuilder(tablesSchema.schemaType);
@@ -241,7 +214,10 @@ export class DbConnectionBuilder extends __DbConnectionBuilder<DbConnection> {}
 export class DbConnection extends __DbConnectionImpl<typeof REMOTE_MODULE> {
   /** Creates a new {@link DbConnectionBuilder} to configure and connect to the remote SpacetimeDB instance. */
   static builder = (): DbConnectionBuilder => {
-    return new DbConnectionBuilder(REMOTE_MODULE, (config: __DbConnectionConfig<typeof REMOTE_MODULE>) => new DbConnection(config));
+    return new DbConnectionBuilder(
+      REMOTE_MODULE,
+      (config: __DbConnectionConfig<typeof REMOTE_MODULE>) => new DbConnection(config),
+    );
   };
 
   /** Creates a new {@link SubscriptionBuilder} to configure a subscription to the remote SpacetimeDB instance. */
@@ -249,4 +225,3 @@ export class DbConnection extends __DbConnectionImpl<typeof REMOTE_MODULE> {
     return new SubscriptionBuilder(this);
   };
 }
-

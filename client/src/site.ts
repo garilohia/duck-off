@@ -5,7 +5,8 @@ export const site = {
   url: 'https://duckoff.fun',
   slogan,
   title: `Duck Off — ${slogan}`,
-  description: 'Race rubber ducks with friends in your browser. Tap to paddle, dodge obstacles, and use toys to race ahead in a real-time multiplayer duck race.',
+  description:
+    'Race rubber ducks with friends in your browser. Tap to paddle, dodge obstacles, and use toys to race ahead in a real-time multiplayer duck race.',
   themeColor: '#fce4d9',
   image: {
     url: '/opengraph-image',

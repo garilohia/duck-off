@@ -1,152 +1,501 @@
-import {useEffect,useRef,useState,useCallback} from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import RaceScene from './three/RaceScene';
 import DuckPreview from './three/DuckPreview';
 import RubberDuck from './RubberDuck';
-import {ordinal,DUCK_COLORS} from './palette';
-import {squeak,unlockAudio,setMuted,isMuted,honk,bonk,fanfare,buzz,crowdCheer,glub,chime} from './squeak';
-import {ITEMS,OBSTACLES,LANES,TRACK,STEER_ONLY} from './items';
-import type {Player,Race,RacePlayer,RaceResult,RaceItem,ItemEffect,RaceFeature} from './module_bindings/types';
-type Props={onSteer:(amount:number)=>Promise<void>;onTap:(count:number)=>Promise<void>;race:Race;players:readonly RacePlayer[];legends:readonly Player[];results:readonly RaceResult[];items:readonly RaceItem[];effects:readonly ItemEffect[];features:readonly RaceFeature[];identity:string;onStart:()=>Promise<void>;onUseItem:()=>Promise<void>;onSwitchLane:(direction:number)=>Promise<void>;onLeave:()=>void};
-const COMBO_WINDOW=520;
-const touchDevice=()=>typeof window!=='undefined'&&('ontouchstart' in window||navigator.maxTouchPoints>0);
-// iOS shares motion data only after a permission prompt that must come from a real click or touch end,
-// never from pointerdown. Tilt is always on; if the prompt is refused we simply keep asking on later taps.
-type MotionCtor={requestPermission?:()=>Promise<string>};
-type MotionWindow={DeviceOrientationEvent?:MotionCtor;DeviceMotionEvent?:MotionCtor};
-const needsMotionPrompt=()=>typeof (window as unknown as MotionWindow).DeviceOrientationEvent?.requestPermission==='function';
-// Orientation drives steering, motion drives shake-to-use; iOS prompts for both.
-async function requestTilt():Promise<boolean>{const w=window as unknown as MotionWindow;if(!w.DeviceOrientationEvent)return false;if(typeof w.DeviceOrientationEvent.requestPermission!=='function')return true;try{const ok=(await w.DeviceOrientationEvent.requestPermission())==='granted';if(typeof w.DeviceMotionEvent?.requestPermission==='function')await w.DeviceMotionEvent.requestPermission().catch(()=>{});return ok}catch{return false}}
-const TILT_DEADZONE=7,TILT_FULL=38,SHAKE_G=19;
-const HOWTO_KEY='duckoff_howto_v2';
-const seenHowTo=()=>{try{return localStorage.getItem(HOWTO_KEY)==='1'}catch{return false}};
-// A little paper shower for crossing the line. Pure CSS; the pieces are laid out deterministically.
-function Confetti(){return <div className="confetti" aria-hidden="true">{Array.from({length:42},(_,i)=><i key={i} style={{left:`${(i*37)%100}%`,animationDelay:`${(i%7)*.12}s`,animationDuration:`${2.4+(i%5)*.3}s`,background:['#ffd02b','#f27860','#428fda','#63c27a','#fffdf5'][i%5],transform:`rotate(${i*23}deg)`}}/>)}</div>;}
-export default function RaceScreen({race,players,legends,results,items,effects,features,identity,onTap,onStart,onUseItem,onSwitchLane,onSteer,onLeave}:Props){
- const [muted,updateMuted]=useState(isMuted),[error,setError]=useState(''),[starting,setStarting]=useState(false),[copied,setCopied]=useState(false),[showLink,setShowLink]=useState(false),[showRanks,setShowRanks]=useState(false);
- const queued=useRef(0),inFlight=useRef(false),comboRef=useRef({count:0,at:0}),[combo,setCombo]=useState(0),[celebrate,setCelebrate]=useState(false);
- const itemPending=useRef(false),[usingItem,setUsingItem]=useState(false),lanePending=useRef(false);
- const [motionGranted,setMotionGranted]=useState(()=>!needsMotionPrompt()),steering=useRef({sent:0,at:0}),shakeAt=useRef(0);
- const [showHowTo,setShowHowTo]=useState(()=>!seenHowTo());
- const isHost=race.hostIdentity===identity,host=legends.find(p=>p.identity.toHexString()===race.hostIdentity);
- const hostName=host?.name||'the host';
- const mine=players.find(p=>p.identity.toHexString()===identity),racing=race.status==='racing',spectator=!mine?.active,finished=race.status==='finished',countdown=race.status==='countdown';
- const secs=Math.ceil(race.phaseTicksLeft/10),online=legends.filter(p=>p.online),active=players.filter(p=>p.active),standings=[...active].sort((a,b)=>a.rank-b.rank),orderedResults=[...results].sort((a,b)=>a.place-b.place),myResult=results.find(p=>p.identity.toHexString()===identity);
- const leaders=[...legends].filter(p=>p.racesWon>0).sort((a,b)=>b.racesWon-a.racesWon||(a.identity.toHexString()<b.identity.toHexString()?-1:1)).slice(0,3);
- const myItem=items.find(p=>p.identity.toHexString()===identity),held=ITEMS[myItem?.held??''];
- const drowned=!!mine?.drowned;
- const canDrive=(racing||countdown)&&!spectator&&!mine?.place&&!drowned;
- const useItem=useCallback(async()=>{
-  if(!racing||spectator||mine?.place||drowned||!myItem?.held||itemPending.current)return;
-  itemPending.current=true;setUsingItem(true);unlockAudio();
-  try{await onUseItem();squeak(mine?.duckIndex??0,.2);buzz(15)}catch(e){setError(e instanceof Error?e.message:'Your item missed. Try again.')}finally{itemPending.current=false;setUsingItem(false)}
- },[racing,spectator,mine,drowned,myItem?.held,onUseItem]);
- // Fluid steering: send how hard we push sideways (-1..1), at most 10 times a second and only when it changes.
- // Kept stable through refs so the tilt/key effects never re-run (and reset the push) on every server update.
- const steerRefs=useRef({onSteer,canDrive});steerRefs.current={onSteer,canDrive};
- const pushSteer=useCallback((amount:number,force=false)=>{
-  if(!steerRefs.current.canDrive)return;const now=performance.now(),s=steering.current;const next=Math.abs(amount)<.02?0:Math.max(-1,Math.min(1,amount));
-  if(!force&&(Math.abs(next-s.sent)<.06||(now-s.at<100&&next!==0)))return;
-  s.sent=next;s.at=now;void steerRefs.current.onSteer(next).catch(()=>{});
- },[]);
- const switchLane=useCallback((direction:number)=>{
-  if(!canDrive||lanePending.current)return;const lane=(mine?.lane??2)+direction;if(lane<0||lane>=LANES)return;
-  lanePending.current=true;unlockAudio();squeak(mine?.duckIndex??0,.09,direction*.5,1.3);buzz(6);
-  void onSwitchLane(direction).catch(()=>{}).finally(()=>{lanePending.current=false});
- },[canDrive,mine?.lane,mine?.duckIndex,onSwitchLane]);
- const url=new URL(location.href);url.searchParams.set('room',race.id);
- const shareRoom=async()=>{try{await navigator.clipboard.writeText(url.toString());setCopied(true)}catch{setShowLink(true)}};
- const armTilt=async()=>{if(motionGranted)return;if(await requestTilt())setMotionGranted(true)};
- const start=async()=>{unlockAudio();void armTilt();setStarting(true);setError('');try{await onStart()}catch{setError('Couldn’t start just yet. Please try again.')}finally{setStarting(false)}};
- // Taps are counted locally and sent in batches, one call in flight at a time, so a slow connection
- // never drops a tap: whatever piled up goes out with the next call.
- const flushTaps=useCallback(()=>{
-  if(inFlight.current||!queued.current)return;
-  const count=Math.min(12,queued.current);queued.current-=count;inFlight.current=true;
-  void onTap(count).catch(()=>{setError('Connection hiccup. Keep tapping, your duck is still here.')}).finally(()=>{inFlight.current=false;if(queued.current)flushTaps()});
- },[onTap]);
- const tap=useCallback(()=>{
-  if(STEER_ONLY||!racing||spectator||mine?.place||drowned)return;const now=performance.now();unlockAudio();
-  // The squeak climbs with the boost meter; consistent tapping builds a combo.
-  const meter=mine?.boostTicksLeft?20:(mine?.boostMeter??0);squeak(mine?.duckIndex??0,.13,0,1+meter/20*.55);buzz(8);
-  const c=comboRef.current;c.count=now-c.at<COMBO_WINDOW?c.count+1:1;c.at=now;setCombo(c.count);
-  queued.current++;flushTaps();
- },[racing,spectator,mine,drowned,flushTaps]);
- // Combo fades when the tapping stops.
- useEffect(()=>{if(!combo)return;const timer=setTimeout(()=>{comboRef.current.count=0;setCombo(0)},COMBO_WINDOW*1.6);return()=>clearTimeout(timer)},[combo]);
- useEffect(()=>{const key=(e:KeyboardEvent)=>{const el=e.target instanceof Element?e.target:null;if(e.repeat||el?.closest('input,textarea,summary'))return;if(e.code==='KeyE'){e.preventDefault();void useItem()}else if(e.code==='ArrowLeft'||e.code==='KeyA'){e.preventDefault();pushSteer(-1,true)}else if(e.code==='ArrowRight'||e.code==='KeyD'){e.preventDefault();pushSteer(1,true)}else if((e.code==='Space'||e.code==='Enter')&&!el?.closest('button')){e.preventDefault();tap()}};const up=(e:KeyboardEvent)=>{if(['ArrowLeft','KeyA','ArrowRight','KeyD'].includes(e.code))pushSteer(0,true)};window.addEventListener('keydown',key);window.addEventListener('keyup',up);return()=>{window.removeEventListener('keydown',key);window.removeEventListener('keyup',up)}},[tap,useItem,pushSteer]);
- // Swipe left or right anywhere on the race screen to hop a lane. Taps still tap; a swipe that starts on
- // the paddle button counts as one paddle plus the hop.
- useEffect(()=>{
-  let start:{x:number;y:number;id:number}|undefined;
-  const down=(e:PointerEvent)=>{if(!e.isPrimary||(e.target instanceof Element&&e.target.closest('input,.results-scroll,.live-standings,details')))return;start={x:e.clientX,y:e.clientY,id:e.pointerId}};
-  const up=(e:PointerEvent)=>{if(!start||e.pointerId!==start.id)return;const dx=e.clientX-start.x,dy=e.clientY-start.y;start=undefined;if(Math.abs(dx)>36&&Math.abs(dx)>Math.abs(dy)*1.2)switchLane(Math.sign(dx))};
-  const cancel=()=>{start=undefined};
-  window.addEventListener('pointerdown',down);window.addEventListener('pointerup',up);window.addEventListener('pointercancel',cancel);
-  return()=>{window.removeEventListener('pointerdown',down);window.removeEventListener('pointerup',up);window.removeEventListener('pointercancel',cancel)};
- },[switchLane]);
- // Ask for motion access from real gestures (click / touchend) until it is granted.
- useEffect(()=>{if(motionGranted)return;const ask=()=>{void armTilt()};window.addEventListener('click',ask);window.addEventListener('touchend',ask);return()=>{window.removeEventListener('click',ask);window.removeEventListener('touchend',ask)}},[motionGranted]); // eslint-disable-line react-hooks/exhaustive-deps
- // Tilt the phone to steer, portrait only: a small dead zone, then the harder you tilt the faster the duck slides across.
- useEffect(()=>{
-  if(!canDrive)return;
-  const onTilt=(e:DeviceOrientationEvent)=>{if(e.gamma==null||window.innerWidth>window.innerHeight)return;const g=e.gamma;const amount=Math.abs(g)<TILT_DEADZONE?0:Math.sign(g)*Math.min(1,(Math.abs(g)-TILT_DEADZONE)/(TILT_FULL-TILT_DEADZONE));pushSteer(amount);};
-  window.addEventListener('deviceorientation',onTilt);return()=>{window.removeEventListener('deviceorientation',onTilt);pushSteer(0,true)};
- },[canDrive,pushSteer]);
- // Shake the phone to use the toy you are holding, so your thumbs never leave the paddle.
- useEffect(()=>{
-  if(!racing||spectator)return;
-  const onShake=(e:DeviceMotionEvent)=>{const a=e.acceleration;if(!a||a.x==null||a.y==null||a.z==null)return;const g=Math.hypot(a.x,a.y,a.z);const now=performance.now();if(g>SHAKE_G&&now-shakeAt.current>900){shakeAt.current=now;void useItem()}};
-  window.addEventListener('devicemotion',onShake);return()=>window.removeEventListener('devicemotion',onShake);
- },[racing,spectator,useItem]);
- // Boost honk, bonk on a hit, fanfare and confetti on crossing the line.
- const boosting=!!mine?.boostTicksLeft,slowed=!!myItem?.slowTicks,placed=!!mine?.place;
- const wasBoosting=useRef(false),wasSlowed=useRef(false),wasPlaced=useRef(false),wasDrowned=useRef(false);
- useEffect(()=>{if(boosting&&!wasBoosting.current&&racing){honk(mine?.duckIndex??0);buzz(30)}wasBoosting.current=boosting},[boosting,racing,mine?.duckIndex]);
- useEffect(()=>{if(slowed&&!wasSlowed.current&&racing){bonk();buzz([30,40,30])}wasSlowed.current=slowed},[slowed,racing]);
- useEffect(()=>{if(placed&&!wasPlaced.current&&racing){fanfare(mine?.duckIndex??0);buzz([40,60,80]);setCelebrate(true);setTimeout(()=>setCelebrate(false),4000)}wasPlaced.current=placed},[placed,racing,mine?.duckIndex]);
- useEffect(()=>{if(drowned&&!wasDrowned.current&&racing){glub(mine?.duckIndex??0);buzz([60,30,60,30,120])}wasDrowned.current=drowned},[drowned,racing,mine?.duckIndex]);
- // A little chime when a toy is grabbed.
- const heldKind=myItem?.held??'',wasHeld=useRef(heldKind);
- useEffect(()=>{if(heldKind&&!wasHeld.current&&racing){chime();buzz(12)}wasHeld.current=heldKind},[heldKind,racing]);
- // Confetti always comes with the crowd.
- useEffect(()=>{if(celebrate)crowdCheer()},[celebrate]);
- useEffect(()=>{setShowRanks(false);setError('');comboRef.current.count=0;setCombo(0);if(race.status==='finished'&&myResult?.place===1&&!race.forfeited)setCelebrate(true);if(race.status!=='finished')setCelebrate(false)},[race.status]); // eslint-disable-line react-hooks/exhaustive-deps
- const startButton=isHost?<button className="primary start-button" disabled={starting} onClick={start}>{starting?'Gathering the ducks…':finished?'Play again':'Start race'} <span aria-hidden="true">↗</span></button>:<p className="panel-note" role="status">Waiting for {hostName} to {finished?'start the next race':'start the race'}.</p>;
- const dismissHowTo=()=>{setShowHowTo(false);try{localStorage.setItem(HOWTO_KEY,'1')}catch{}unlockAudio();void armTilt()};
- const howTo=<div className="howto" role="dialog" aria-modal="true" aria-labelledby="howto-title"><section className="howto-card surface"><div className="eyebrow">BEFORE YOU PADDLE</div><h1 id="howto-title">How to play</h1><ul>
-  {STEER_ONLY?<li><b>Your duck swims by itself.</b><span>The river carries you; rapids and slipstreams carry you faster.</span></li>:<li><b>Tap anywhere to paddle.</b><span>Faster taps, faster duck. Twenty taps fill a boost.</span></li>}
-  <li><b>{touchDevice()?'Tilt your phone to steer.':'Hold ← → to steer.'}</b><span>{touchDevice()?'Lean left or right and your duck slides across the river. A swipe nudges you a whole lane.':'You slide across the river while a key is held.'}</span></li>
-  {touchDevice()&&<li><b>Turn off auto-rotate.</b><span>Tilting works in portrait. Lock your screen rotation so the phone does not flip to landscape mid-race.</span></li>}
-  <li><b>Dodge rocks, logs and the whirlpool.</b><span>Rocks and logs knock your speed. The whirlpool pulls you under and you are out of the race.</span></li>
-  <li><b>Ride the white rapids.</b><span>A free whoosh.</span></li>
-  <li><b>Rockets and shields work on pickup.</b><span>Swim into one and it is on: a rocket makes you 55% faster for 3s, a shield blocks the next hit for up to 15s.</span></li>
-  <li><b>Bombs and bubbles wait for your moment.</b><span>A toy button appears on the right{touchDevice()?' (or shake the phone)':''}. The bomb flies at the nearest duck ahead and splashes everyone near them. The bubble chases the duck ahead and slows them, or floats behind you as a trap if you are leading.</span></li>
-  <li><b>Barge into a rival.</b><span>Slide into a duck beside you and they wobble. A shield blocks any hit.</span></li>
- </ul>{touchDevice()&&!motionGranted&&<p className="howto-note">Allow motion access when asked, that is what makes tilt steering work.</p>}<button className="primary" onClick={dismissHowTo}>Got it <span aria-hidden="true">↗</span></button></section></div>;
- // The toy button floats on the centre-right so a thumb reaches it without leaving the paddle.
- const toyButton=racing&&!spectator&&!drowned&&!mine?.place&&held?<button className={`toy-fab ${held?'has-item':''}`} disabled={!held||usingItem} onPointerDown={e=>e.stopPropagation()} onClick={()=>void useItem()} aria-label={held?`Use ${held.name}`:'Toy slot, empty'} title={held?.hint}><span aria-hidden="true">{held?.icon??'🧸'}</span><b>{usingItem?'…':held?.name??'toy slot'}</b></button>:null;
- return <main className={`race-screen phase-${race.status}`} data-phase={race.status} onPointerDown={e=>{if(!(e.target instanceof Element)||e.target.closest('button,input,a,details,.results-scroll,.live-standings,.howto,.share-fallback,.connection-warning'))return;if(STEER_ONLY){if(e.isPrimary)switchLane(e.clientX<window.innerWidth/2?-1:1)}else tap()}}>
-  <div className="river-fallback" aria-hidden="true"><div className="fallback-racers">{active.map((p,i)=><span key={p.identity.toHexString()} style={{left:`${8+i/Math.max(active.length,1)*80}%`,bottom:`${10+p.pos/TRACK*65}%`}}><RubberDuck size={40}/><small>{p.name}</small></span>)}</div></div>
-  <div className="scene-layer"><RaceScene race={race} players={players} items={items} effects={effects} features={features} identity={identity}/></div>
-  {celebrate&&<Confetti/>}
-  {toyButton}
-  {showHowTo&&race.status!=='finished'&&howTo}
-  <header className="race-header"><div className="race-brand"><button className="brand-mini brand-home" aria-label="Back to the home screen" onClick={onLeave}>duck off<span>!</span></button></div><div className="header-actions"><button className="icon-button" aria-label={muted?'Unmute squeaks':'Mute squeaks'} onClick={()=>{unlockAudio();updateMuted(!muted);setMuted(!muted)}}>{muted?'♪̸':'♫'}</button></div></header>
-  {!finished&&<div className="room-strip"><span>ROOM <b>{race.id}</b></span><button onClick={shareRoom}>{copied?'Copied ✓':'Invite friends ↗'}</button></div>}
-  {showLink&&<div className="share-fallback"><label htmlFor="share-link">Copy this room link</label><input id="share-link" readOnly value={url.toString()} onFocus={e=>e.target.select()}/><button className="text-button" onClick={()=>setShowLink(false)}>Done</button></div>}
-  {race.status==='lobby'&&<section className="lobby-panel surface"><div className="eyebrow">{race.id.startsWith('SOLO-')?'YOUR PRACTICE RIVER':'THE FLOCK IS GATHERING'}</div><h1>Everyone here?</h1><p>{isHost?'Invite your friends. Press Start race when everyone is here.':`${hostName} is hosting. The race starts when they press Start race.`}</p><div className="roster" aria-label="Players in the room">{online.map(p=><span key={p.identity.toHexString()}><i style={{background:DUCK_COLORS[p.duckIndex]}} aria-hidden="true">♥</i>{p.name}{p.identity.toHexString()===identity&&<small>you</small>}{p.identity.toHexString()===race.hostIdentity&&<small>host</small>}</span>)}</div>{startButton}<span className="panel-note">{online.length} {online.length===1?'duck':'ducks'} ready · only the host can start</span><button type="button" className="text-button" onClick={()=>setShowHowTo(true)}>How to play</button><details className="item-guide" hidden><summary>How to play</summary><p>{STEER_ONLY?'Your duck swims on its own.':'Tap to paddle.'} Tilt your phone to slide across the river (hold the arrow keys on a computer); a swipe nudges you a whole lane. Shake the phone (or press E) to use a toy. Steer into a floating toy to pick it up, then tap its button (shake the phone, or press E) to use it. Ride the white rapids for a free whoosh.</p><ul>{Object.values(ITEMS).map(item=><li key={item.name}><b>{item.icon} {item.name}</b><span>{item.hint}</span></li>)}{Object.values(OBSTACLES).map(o=><li key={o.name}><b>{o.icon} {o.name}</b><span>{o.hint}</span></li>)}</ul></details></section>}
-  {countdown&&<section className="countdown-overlay" aria-live="assertive"><p>{spectator?'You’ll join the next race':'Pick your lane. Little wings at the ready…'}</p><strong key={secs}>{secs}</strong><span>{STEER_ONLY?(touchDevice()?'Your duck swims by itself · tilt, swipe or tap a side to steer':'Your duck swims by itself · ← → to steer'):touchDevice()?'Tap to paddle · tilt or swipe to dodge rocks and logs':'Tap to paddle · ← → to dodge rocks and logs'}</span></section>}
-  {racing&&<><section className="race-status"><span className="status-pill">{spectator?'CHEERING SECTION':mine?.place?`${ordinal(mine.place)} · FINISHED`:drowned?'GLUB · OUT':`${ordinal(mine?.rank||1)} of ${active.length}`}</span><button className="status-pill" onClick={()=>setShowRanks(!showRanks)} aria-expanded={showRanks}>{showRanks?'Close standings':'Standings'} {showRanks?'×':'↗'}</button><span className="status-pill timer">{secs}s</span></section>
-   {showRanks&&<section className="live-standings surface" aria-label="Live standings"><h2>Little league leaders</h2><ol>{standings.map(p=><li key={p.identity.toHexString()} className={p.identity.toHexString()===identity?'is-you':''}><b>{p.rank}</b><span>{p.name}{p.identity.toHexString()===identity?' (you)':''}</span><small>{p.place?'Finished':p.drowned?'Glub':`${Math.floor(p.pos/24)}%`}</small></li>)}</ol></section>}
-   {race.phaseTicksLeft>390&&!showRanks&&<div className="go-flash" aria-live="polite">GO!</div>}
-   {combo>=5&&!mine?.place&&<div className="combo" key={combo} aria-live="off">×{combo}<small>combo</small></div>}
-   <section className="race-controls">{spectator?<div className="waiting-message surface"><h2>Your turn is coming.</h2><p>Enjoy the splashes. You’re in the next one.</p></div>:drowned?<div className="waiting-message surface"><h2>Glub. The whirlpool got you.</h2><p>Your duck is fine, just very upside down. Cheer the others home.</p></div>:mine?.place?<div className="waiting-message surface"><h2>A {ordinal(mine.place)} place splash!</h2><p>Let’s cheer the others home.</p></div>:<><div className="progress-info"><span>{Math.floor((mine?.pos??0)/24)}% of the way</span><span>{mine?.boostTicksLeft?'A little extra whoosh!':STEER_ONLY?'Ride the rapids for a whoosh':`${mine?.boostMeter??0}/20 to a boost`}</span></div>{!STEER_ONLY&&<div className={`boost-track ${mine?.boostTicksLeft||myItem?.turboTicks?'boosting':''}`} role="progressbar" aria-label="Boost meter" aria-valuemin={0} aria-valuemax={20} aria-valuenow={mine?.boostTicksLeft?20:mine?.boostMeter??0}><div style={{width:`${mine?.boostTicksLeft?100:(mine?.boostMeter??0)*5}%`}}/></div>}<p className="item-hint">{myItem?.slowTicks?`Bonk! Half speed · ${(myItem.slowTicks/10).toFixed(1)}s`:myItem?.shieldTicks?`Shield ready · ${(myItem.shieldTicks/10).toFixed(1)}s`:myItem?.turboTicks?`Rocket rush! · ${(myItem.turboTicks/10).toFixed(1)}s`:held?`${held.name} ready: ${held.hint}`:STEER_ONLY?(touchDevice()?'Tilt to steer. Grab a toy, dodge the rocks.':'← → to steer. Grab a toy, dodge the rocks.'):(touchDevice()?'Tap anywhere to paddle · tilt to steer':'Tap anywhere to paddle · ← → to steer')}</p></>}</section>
-  </>}
-  {finished&&race.forfeited&&<div className="results-scroll"><section className="results-card surface" aria-label="Race forfeited"><div className="eyebrow">A VERY QUIET LITTLE RIVER</div><h1>{race.forfeitReason==='drowned'?'The river wins':race.forfeitReason==='empty'?'Everyone wandered off':'Race forfeited'}</h1><div className="winner-portrait"><DuckPreview index={mine?.duckIndex??0} spinnable/></div><p className="result-message">{race.forfeitReason==='drowned'?'The whirlpool got every duck before anyone reached the line. No winner this time, just a lot of bubbles.':race.forfeitReason==='empty'?'All the racers left the river, so there is nothing to score.':'Nobody paddled for 15 seconds, so there is no winner this time. The ducks are just bobbing.'}</p><div className="results-actions">{startButton}<button className="text-button" onClick={onLeave}>Back to main menu</button><span className="panel-note">The host starts the next race when everyone is ready.</span></div></section></div>}
-  {finished&&!race.forfeited&&<div className="results-scroll"><section className="results-card surface" aria-label="Race results"><div className="eyebrow">{race.solo?'A VERY GOOD PRACTICE RUN':'A VERY GOOD LITTLE RACE'}</div><h1>{race.solo?(orderedResults[0]?.pos??0)>=TRACK?(orderedResults[0]?.bonks?`${orderedResults[0].bonks} ${orderedResults[0].bonks===1?'bonk':'bonks'}`:'Clean run!'):'Ran out of river':`${orderedResults[0]?.name??race.winnerName} wins!`}</h1><div className="winner-portrait"><DuckPreview index={orderedResults[0]?.duckIndex??race.winnerDuckIndex} spinnable/><span className="winner-medal">1</span></div><p className="result-message">{myResult?myResult.drowned?`The whirlpool took you at ${Math.floor(myResult.pos/24)}%. ${ordinal(myResult.place)} place, and a very good story.`:race.solo?myResult.pos>=TRACK?`${myResult.seconds.toFixed(1)} seconds down the river${myResult.bonks?` with ${myResult.bonks} ${myResult.bonks===1?'bonk':'bonks'}. Smoother next time?`:' without touching a thing. Perfect.'}`:`${Math.floor(myResult.pos/24)}% of the river before the buzzer. Keep paddling!`:`You splashed into ${ordinal(myResult.place)}. ${myResult.place===1?'Look at you go!':'Your duck is proud of you.'}`:'Your little duck is up next.'}</p>
-   <ol className="results-list" aria-label="Final rankings">{orderedResults.map(p=><li key={p.id} data-place={p.place} className={p.identity.toHexString()===identity?'is-you':''}><b className="result-place">{p.place<=3?['①','②','③'][p.place-1]:p.place}</b><span className="result-name">{p.name}{p.identity.toHexString()===identity&&<small>you</small>}<em>{p.pos>=TRACK?'Crossed the line':p.drowned?`Went under at ${Math.floor(p.pos/24)}%`:`${Math.floor(p.pos/24)}% at the buzzer`}</em></span><span className="result-taps">{p.pos>=TRACK?`${p.seconds.toFixed(1)}s`:p.taps}<small>{p.pos>=TRACK?(p.bonks?`${p.bonks} ${p.bonks===1?'bonk':'bonks'}`:'clean run'):'taps'}</small></span></li>)}</ol>
-   <p className="ranking-note">Finishers first. At the buzzer, remaining ducks are ranked by distance, then anyone the whirlpool took. Exact ties use a fixed order.</p><section className="legends" aria-label="Flock legends"><h2>Flock legends</h2><p>Lifetime wins · ducks in this room</p>{leaders.length?<ol>{leaders.map(p=><li key={p.identity.toHexString()}><span>{p.name}</span><b>{p.racesWon} {p.racesWon===1?'win':'wins'}</b></li>)}</ol>:<p>The first little legend is on the way.</p>}</section><div className="results-actions">{startButton}<button className="text-button" onClick={onLeave}>Back to main menu</button><span className="panel-note">The host starts the next race when everyone is ready.</span></div>
-  </section></div>}
-  {error&&<div className="connection-warning" role="alert"><span>{error}</span><button className="icon-button" aria-label="Dismiss error" onClick={()=>setError('')}>×</button></div>}
- </main>;
+import Confetti from './race/Confetti';
+import HowTo from './race/HowTo';
+import { touchDevice, useRaceInput } from './race/useRaceInput';
+import { useRaceFeedback } from './race/useRaceFeedback';
+import { ordinal, DUCK_COLORS } from './palette';
+import { squeak, unlockAudio, setMuted, isMuted, buzz } from './squeak';
+import { ITEMS, TRACK, STEER_ONLY } from './items';
+import { PREF, readFlag, writeFlag } from './storage';
+import type { Player, Race, RacePlayer, RaceResult, RaceItem, ItemEffect, RaceFeature } from './module_bindings/types';
+
+type Props = {
+  race: Race;
+  players: readonly RacePlayer[];
+  legends: readonly Player[];
+  results: readonly RaceResult[];
+  items: readonly RaceItem[];
+  effects: readonly ItemEffect[];
+  features: readonly RaceFeature[];
+  identity: string;
+  onTap: (count: number) => Promise<void>;
+  onSteer: (amount: number) => Promise<void>;
+  onSwitchLane: (direction: number) => Promise<void>;
+  onStart: () => Promise<void>;
+  onUseItem: () => Promise<void>;
+  onLeave: () => void;
+};
+
+const percent = (pos: number) => Math.floor(pos / (TRACK / 100));
+const bonks = (n: number) => `${n} ${n === 1 ? 'bonk' : 'bonks'}`;
+const hex = (p: { identity: { toHexString(): string } }) => p.identity.toHexString();
+
+export default function RaceScreen(props: Props) {
+  const { race, players, legends, results, items, effects, features, identity, onStart, onUseItem, onLeave } = props;
+  const [muted, updateMuted] = useState(isMuted);
+  const [error, setError] = useState('');
+  const [starting, setStarting] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [showLink, setShowLink] = useState(false);
+  const [showRanks, setShowRanks] = useState(false);
+  const [usingItem, setUsingItem] = useState(false);
+  const [showHowTo, setShowHowTo] = useState(() => !readFlag(PREF.howTo));
+  const itemPending = useRef(false);
+
+  const touch = touchDevice();
+  const mine = players.find((p) => hex(p) === identity);
+  const myItem = items.find((p) => hex(p) === identity);
+  const myResult = results.find((p) => hex(p) === identity);
+  const held = ITEMS[myItem?.held ?? ''];
+  const racing = race.status === 'racing';
+  const countdown = race.status === 'countdown';
+  const finished = race.status === 'finished';
+  const spectator = !mine?.active;
+  const drowned = !!mine?.drowned;
+  const canDrive = (racing || countdown) && !spectator && !mine?.place && !drowned;
+  const isHost = race.hostIdentity === identity;
+  const hostName = legends.find((p) => hex(p) === race.hostIdentity)?.name || 'the host';
+  const secs = Math.ceil(race.phaseTicksLeft / 10);
+  const online = legends.filter((p) => p.online);
+  const active = players.filter((p) => p.active);
+  const standings = [...active].sort((a, b) => a.rank - b.rank);
+  const orderedResults = [...results].sort((a, b) => a.place - b.place);
+  const leaders = [...legends]
+    .filter((p) => p.racesWon > 0)
+    .sort((a, b) => b.racesWon - a.racesWon || (hex(a) < hex(b) ? -1 : 1))
+    .slice(0, 3);
+
+  const useItem = useCallback(async () => {
+    if (!racing || spectator || mine?.place || drowned || !myItem?.held || itemPending.current) return;
+    itemPending.current = true;
+    setUsingItem(true);
+    unlockAudio();
+    try {
+      await onUseItem();
+      squeak(mine?.duckIndex ?? 0, 0.2);
+      buzz(15);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Your item missed. Try again.');
+    } finally {
+      itemPending.current = false;
+      setUsingItem(false);
+    }
+  }, [racing, spectator, mine, drowned, myItem?.held, onUseItem]);
+
+  const { tap, switchLane, combo, motionGranted, armMotion } = useRaceInput({
+    mine,
+    racing,
+    canDrive,
+    spectator,
+    onTap: props.onTap,
+    onSteer: props.onSteer,
+    onSwitchLane: props.onSwitchLane,
+    useItem,
+    onError: setError,
+  });
+  const { celebrate } = useRaceFeedback({ race, mine, myItem, myResult, racing });
+
+  useEffect(() => {
+    setShowRanks(false);
+    setError('');
+  }, [race.status]);
+
+  const url = new URL(location.href);
+  url.searchParams.set('room', race.id);
+  const shareRoom = async () => {
+    try {
+      await navigator.clipboard.writeText(url.toString());
+      setCopied(true);
+    } catch {
+      setShowLink(true);
+    }
+  };
+  const start = async () => {
+    unlockAudio();
+    void armMotion();
+    setStarting(true);
+    setError('');
+    try {
+      await onStart();
+    } catch {
+      setError('Couldn’t start just yet. Please try again.');
+    } finally {
+      setStarting(false);
+    }
+  };
+  const dismissHowTo = useCallback(() => {
+    setShowHowTo(false);
+    writeFlag(PREF.howTo, true);
+    unlockAudio();
+    void armMotion();
+  }, [armMotion]);
+
+  const startButton = isHost ? (
+    <button className="primary start-button" disabled={starting} onClick={start}>
+      {starting ? 'Gathering the ducks…' : finished ? 'Play again' : 'Start race'} <span aria-hidden="true">↗</span>
+    </button>
+  ) : (
+    <p className="panel-note" role="status">
+      Waiting for {hostName} to {finished ? 'start the next race' : 'start the race'}.
+    </p>
+  );
+
+  const hint = myItem?.slowTicks
+    ? `Bonk! Half speed · ${(myItem.slowTicks / 10).toFixed(1)}s`
+    : myItem?.shieldTicks
+      ? `Shield ready · ${(myItem.shieldTicks / 10).toFixed(1)}s`
+      : myItem?.turboTicks
+        ? `Rocket rush! · ${(myItem.turboTicks / 10).toFixed(1)}s`
+        : held
+          ? `${held.name} ready: ${held.hint}`
+          : STEER_ONLY
+            ? touch
+              ? 'Tilt to steer. Grab a toy, dodge the rocks.'
+              : '← → to steer. Grab a toy, dodge the rocks.'
+            : touch
+              ? 'Tap anywhere to paddle · tilt to steer'
+              : 'Tap anywhere to paddle · ← → to steer';
+
+  const controls = spectator ? (
+    <div className="waiting-message surface">
+      <h2>Your turn is coming.</h2>
+      <p>Enjoy the splashes. You’re in the next one.</p>
+    </div>
+  ) : drowned ? (
+    <div className="waiting-message surface">
+      <h2>Glub. The whirlpool got you.</h2>
+      <p>Your duck is fine, just very upside down. Cheer the others home.</p>
+    </div>
+  ) : mine?.place ? (
+    <div className="waiting-message surface">
+      <h2>A {ordinal(mine.place)} place splash!</h2>
+      <p>Let’s cheer the others home.</p>
+    </div>
+  ) : (
+    <>
+      <div className="progress-info">
+        <span>{percent(mine?.pos ?? 0)}% of the way</span>
+        <span>
+          {mine?.boostTicksLeft
+            ? 'A little extra whoosh!'
+            : STEER_ONLY
+              ? 'Ride the rapids for a whoosh'
+              : `${mine?.boostMeter ?? 0}/20 to a boost`}
+        </span>
+      </div>
+      {!STEER_ONLY && (
+        <div
+          className={`boost-track ${mine?.boostTicksLeft || myItem?.turboTicks ? 'boosting' : ''}`}
+          role="progressbar"
+          aria-label="Boost meter"
+          aria-valuemin={0}
+          aria-valuemax={20}
+          aria-valuenow={mine?.boostTicksLeft ? 20 : (mine?.boostMeter ?? 0)}
+        >
+          <div style={{ width: `${mine?.boostTicksLeft ? 100 : (mine?.boostMeter ?? 0) * 5}%` }} />
+        </div>
+      )}
+      <p className="item-hint">{hint}</p>
+    </>
+  );
+
+  const resultsActions = (
+    <div className="results-actions">
+      {startButton}
+      <button className="text-button" onClick={onLeave}>
+        Back to main menu
+      </button>
+      <span className="panel-note">The host starts the next race when everyone is ready.</span>
+    </div>
+  );
+
+  const resultMessage = !myResult
+    ? 'Your little duck is up next.'
+    : myResult.drowned
+      ? `The whirlpool took you at ${percent(myResult.pos)}%. ${ordinal(myResult.place)} place, and a very good story.`
+      : race.solo
+        ? myResult.pos >= TRACK
+          ? `${myResult.seconds.toFixed(1)} seconds down the river${
+              myResult.bonks ? ` with ${bonks(myResult.bonks)}. Smoother next time?` : ' without touching a thing. Perfect.'
+            }`
+          : `${percent(myResult.pos)}% of the river before the buzzer. Keep paddling!`
+        : `You splashed into ${ordinal(myResult.place)}. ${myResult.place === 1 ? 'Look at you go!' : 'Your duck is proud of you.'}`;
+
+  const soloHeadline =
+    (orderedResults[0]?.pos ?? 0) >= TRACK
+      ? orderedResults[0]?.bonks
+        ? bonks(orderedResults[0].bonks)
+        : 'Clean run!'
+      : 'Ran out of river';
+
+  return (
+    <main
+      className={`race-screen phase-${race.status}`}
+      data-phase={race.status}
+      onPointerDown={(e) => {
+        if (!(e.target instanceof Element)) return;
+        if (e.target.closest('button,input,a,details,.results-scroll,.live-standings,.howto,.share-fallback,.connection-warning'))
+          return;
+        if (STEER_ONLY) {
+          if (e.isPrimary) switchLane(e.clientX < window.innerWidth / 2 ? -1 : 1);
+        } else tap();
+      }}
+    >
+      <div className="river-fallback" aria-hidden="true">
+        <div className="fallback-racers">
+          {active.map((p, i) => (
+            <span
+              key={hex(p)}
+              style={{ left: `${8 + (i / Math.max(active.length, 1)) * 80}%`, bottom: `${10 + (p.pos / TRACK) * 65}%` }}
+            >
+              <RubberDuck size={40} />
+              <small>{p.name}</small>
+            </span>
+          ))}
+        </div>
+      </div>
+      <div className="scene-layer">
+        <RaceScene race={race} players={players} items={items} effects={effects} features={features} identity={identity} />
+      </div>
+      {celebrate && <Confetti />}
+      {racing && !spectator && !drowned && !mine?.place && held && (
+        <button
+          className="toy-fab has-item"
+          disabled={usingItem}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={() => void useItem()}
+          aria-label={`Use ${held.name}`}
+          title={held.hint}
+        >
+          <span aria-hidden="true">{held.icon}</span>
+          <b>{usingItem ? '…' : held.name}</b>
+        </button>
+      )}
+      {showHowTo && !finished && <HowTo touch={touch} motionGranted={motionGranted} onDismiss={dismissHowTo} />}
+      <header className="race-header">
+        <div className="race-brand">
+          <button className="brand-mini brand-home" aria-label="Back to the home screen" onClick={onLeave}>
+            duck off<span>!</span>
+          </button>
+        </div>
+        <div className="header-actions">
+          <button
+            className="icon-button"
+            aria-label={muted ? 'Unmute squeaks' : 'Mute squeaks'}
+            onClick={() => {
+              unlockAudio();
+              updateMuted(!muted);
+              setMuted(!muted);
+            }}
+          >
+            {muted ? '♪̸' : '♫'}
+          </button>
+        </div>
+      </header>
+      {!finished && (
+        <div className="room-strip">
+          <span>
+            ROOM <b>{race.id}</b>
+          </span>
+          <button onClick={shareRoom}>{copied ? 'Copied ✓' : 'Invite friends ↗'}</button>
+        </div>
+      )}
+      {showLink && (
+        <div className="share-fallback">
+          <label htmlFor="share-link">Copy this room link</label>
+          <input id="share-link" readOnly value={url.toString()} onFocus={(e) => e.target.select()} />
+          <button className="text-button" onClick={() => setShowLink(false)}>
+            Done
+          </button>
+        </div>
+      )}
+      {race.status === 'lobby' && (
+        <section className="lobby-panel surface">
+          <div className="eyebrow">{race.mode === 'practice' ? 'YOUR PRACTICE RIVER' : 'THE FLOCK IS GATHERING'}</div>
+          <h1>Everyone here?</h1>
+          <p>
+            {isHost
+              ? 'Invite your friends. Press Start race when everyone is here.'
+              : `${hostName} is hosting. The race starts when they press Start race.`}
+          </p>
+          <div className="roster" aria-label="Players in the room">
+            {online.map((p) => (
+              <span key={hex(p)}>
+                <i style={{ background: DUCK_COLORS[p.duckIndex] }} aria-hidden="true">
+                  ♥
+                </i>
+                {p.name}
+                {hex(p) === identity && <small>you</small>}
+                {hex(p) === race.hostIdentity && <small>host</small>}
+              </span>
+            ))}
+          </div>
+          {startButton}
+          <span className="panel-note">
+            {online.length} {online.length === 1 ? 'duck' : 'ducks'} ready · only the host can start
+          </span>
+          <button type="button" className="text-button" onClick={() => setShowHowTo(true)}>
+            How to play
+          </button>
+        </section>
+      )}
+      {countdown && (
+        <section className="countdown-overlay" aria-live="assertive">
+          <p>{spectator ? 'You’ll join the next race' : 'Pick your lane. Little wings at the ready…'}</p>
+          <strong key={secs}>{secs}</strong>
+          <span>
+            {STEER_ONLY
+              ? touch
+                ? 'Your duck swims by itself · tilt, swipe or tap a side to steer'
+                : 'Your duck swims by itself · ← → to steer'
+              : touch
+                ? 'Tap to paddle · tilt or swipe to dodge rocks and logs'
+                : 'Tap to paddle · ← → to dodge rocks and logs'}
+          </span>
+        </section>
+      )}
+      {racing && (
+        <>
+          <section className="race-status">
+            <span className="status-pill">
+              {spectator
+                ? 'CHEERING SECTION'
+                : mine?.place
+                  ? `${ordinal(mine.place)} · FINISHED`
+                  : drowned
+                    ? 'GLUB · OUT'
+                    : `${ordinal(mine?.rank || 1)} of ${active.length}`}
+            </span>
+            <button className="status-pill" onClick={() => setShowRanks(!showRanks)} aria-expanded={showRanks}>
+              {showRanks ? 'Close standings' : 'Standings'} {showRanks ? '×' : '↗'}
+            </button>
+            <span className="status-pill timer">{secs}s</span>
+          </section>
+          {showRanks && (
+            <section className="live-standings surface" aria-label="Live standings">
+              <h2>Little league leaders</h2>
+              <ol>
+                {standings.map((p) => (
+                  <li key={hex(p)} className={hex(p) === identity ? 'is-you' : ''}>
+                    <b>{p.rank}</b>
+                    <span>
+                      {p.name}
+                      {hex(p) === identity ? ' (you)' : ''}
+                    </span>
+                    <small>{p.place ? 'Finished' : p.drowned ? 'Glub' : `${percent(p.pos)}%`}</small>
+                  </li>
+                ))}
+              </ol>
+            </section>
+          )}
+          {race.phaseTicksLeft > 390 && !showRanks && (
+            <div className="go-flash" aria-live="polite">
+              GO!
+            </div>
+          )}
+          {combo >= 5 && !mine?.place && (
+            <div className="combo" key={combo} aria-live="off">
+              ×{combo}
+              <small>combo</small>
+            </div>
+          )}
+          <section className="race-controls">{controls}</section>
+        </>
+      )}
+      {finished && race.forfeited && (
+        <div className="results-scroll">
+          <section className="results-card surface" aria-label="Race forfeited">
+            <div className="eyebrow">A VERY QUIET LITTLE RIVER</div>
+            <h1>
+              {race.forfeitReason === 'drowned'
+                ? 'The river wins'
+                : race.forfeitReason === 'empty'
+                  ? 'Everyone wandered off'
+                  : 'Race forfeited'}
+            </h1>
+            <div className="winner-portrait">
+              <DuckPreview index={mine?.duckIndex ?? 0} spinnable />
+            </div>
+            <p className="result-message">
+              {race.forfeitReason === 'drowned'
+                ? 'The whirlpool got every duck before anyone reached the line. No winner this time, just a lot of bubbles.'
+                : race.forfeitReason === 'empty'
+                  ? 'All the racers left the river, so there is nothing to score.'
+                  : 'Nobody paddled for 15 seconds, so there is no winner this time. The ducks are just bobbing.'}
+            </p>
+            {resultsActions}
+          </section>
+        </div>
+      )}
+      {finished && !race.forfeited && (
+        <div className="results-scroll">
+          <section className="results-card surface" aria-label="Race results">
+            <div className="eyebrow">{race.solo ? 'A VERY GOOD PRACTICE RUN' : 'A VERY GOOD LITTLE RACE'}</div>
+            <h1>{race.solo ? soloHeadline : `${orderedResults[0]?.name ?? race.winnerName} wins!`}</h1>
+            <div className="winner-portrait">
+              <DuckPreview index={orderedResults[0]?.duckIndex ?? race.winnerDuckIndex} spinnable />
+              <span className="winner-medal">1</span>
+            </div>
+            <p className="result-message">{resultMessage}</p>
+            <ol className="results-list" aria-label="Final rankings">
+              {orderedResults.map((p) => (
+                <li key={p.id} data-place={p.place} className={hex(p) === identity ? 'is-you' : ''}>
+                  <b className="result-place">{p.place <= 3 ? ['①', '②', '③'][p.place - 1] : p.place}</b>
+                  <span className="result-name">
+                    {p.name}
+                    {hex(p) === identity && <small>you</small>}
+                    <em>
+                      {p.pos >= TRACK
+                        ? 'Crossed the line'
+                        : p.drowned
+                          ? `Went under at ${percent(p.pos)}%`
+                          : `${percent(p.pos)}% at the buzzer`}
+                    </em>
+                  </span>
+                  <span className="result-taps">
+                    {p.pos >= TRACK ? `${p.seconds.toFixed(1)}s` : p.taps}
+                    <small>{p.pos >= TRACK ? (p.bonks ? bonks(p.bonks) : 'clean run') : 'taps'}</small>
+                  </span>
+                </li>
+              ))}
+            </ol>
+            <p className="ranking-note">
+              Finishers first. At the buzzer, remaining ducks are ranked by distance, then anyone the whirlpool took. Exact ties
+              use a fixed order.
+            </p>
+            <section className="legends" aria-label="Flock legends">
+              <h2>Flock legends</h2>
+              <p>Lifetime wins · ducks in this room</p>
+              {leaders.length ? (
+                <ol>
+                  {leaders.map((p) => (
+                    <li key={hex(p)}>
+                      <span>{p.name}</span>
+                      <b>
+                        {p.racesWon} {p.racesWon === 1 ? 'win' : 'wins'}
+                      </b>
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <p>The first little legend is on the way.</p>
+              )}
+            </section>
+            {resultsActions}
+          </section>
+        </div>
+      )}
+      {error && (
+        <div className="connection-warning" role="alert">
+          <span>{error}</span>
+          <button className="icon-button" aria-label="Dismiss error" onClick={() => setError('')}>
+            ×
+          </button>
+        </div>
+      )}
+    </main>
+  );
 }

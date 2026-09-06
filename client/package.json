@@ -7,25 +7,27 @@
     "build": "next build",
     "start": "next start --hostname 0.0.0.0",
     "typecheck": "tsc --noEmit",
-    "test": "tsx tests/hosts.ts && tsx tests/items.ts && tsx tests/random.ts && tsx tests/multiplayer.ts",
-    "pretest": "spacetime publish --server http://127.0.0.1:3030 --module-path ../server/spacetimedb duckoff --delete-data=always -y"
+    "test": "node tests/run.mjs",
+    "format": "prettier --write \"src/**/*.{ts,tsx,css}\" \"tests/**/*.{ts,mjs}\" \"../server/spacetimedb/src/**/*.ts\"",
+    "format:check": "prettier --check \"src/**/*.{ts,tsx,css}\" \"tests/**/*.{ts,mjs}\" \"../server/spacetimedb/src/**/*.ts\""
   },
   "dependencies": {
+    "@react-three/drei": "^10.7.0",
+    "@react-three/fiber": "^9.3.0",
     "next": "^16.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "spacetimedb": "2.9.0",
-    "three": "^0.180.0",
-    "@react-three/fiber": "^9.3.0",
-    "@react-three/drei": "^10.7.0"
+    "three": "^0.180.0"
   },
   "devDependencies": {
-    "typescript": "^5.9.0",
+    "@playwright/test": "^1.55.0",
+    "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@types/three": "^0.180.0",
-    "@types/node": "^22.0.0",
+    "prettier": "^3.9.6",
     "tsx": "^4.20.0",
-    "@playwright/test": "^1.55.0"
+    "typescript": "^5.9.0"
   }
 }

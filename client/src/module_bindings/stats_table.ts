@@ -8,12 +8,12 @@ import {
   t as __t,
   type AlgebraicTypeType as __AlgebraicTypeType,
   type Infer as __Infer,
-} from "spacetimedb";
+} from 'spacetimedb';
 
 export default __t.row({
   id: __t.u8().primaryKey(),
   visitors: __t.u32(),
   players: __t.u32(),
   races: __t.u32(),
-  soloRuns: __t.u32().name("solo_runs"),
+  soloRuns: __t.u32().name('solo_runs'),
 });

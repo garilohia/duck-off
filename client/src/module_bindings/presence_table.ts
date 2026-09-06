@@ -8,9 +8,9 @@ import {
   t as __t,
   type AlgebraicTypeType as __AlgebraicTypeType,
   type Infer as __Infer,
-} from "spacetimedb";
+} from 'spacetimedb';
 
 export default __t.row({
-  connectionId: __t.connectionId().primaryKey().name("connection_id"),
+  connectionId: __t.connectionId().primaryKey().name('connection_id'),
   identity: __t.identity(),
 });

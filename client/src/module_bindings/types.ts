@@ -8,9 +8,9 @@ import {
   t as __t,
   type AlgebraicTypeType as __AlgebraicTypeType,
   type Infer as __Infer,
-} from "spacetimedb";
+} from 'spacetimedb';
 
-export const ItemEffect = __t.object("ItemEffect", {
+export const ItemEffect = __t.object('ItemEffect', {
   id: __t.u64(),
   room: __t.string(),
   source: __t.identity(),
@@ -24,7 +24,7 @@ export const ItemEffect = __t.object("ItemEffect", {
 });
 export type ItemEffect = __Infer<typeof ItemEffect>;
 
-export const Player = __t.object("Player", {
+export const Player = __t.object('Player', {
   identity: __t.identity(),
   room: __t.string(),
   name: __t.string(),
@@ -36,13 +36,13 @@ export const Player = __t.object("Player", {
 });
 export type Player = __Infer<typeof Player>;
 
-export const Presence = __t.object("Presence", {
+export const Presence = __t.object('Presence', {
   connectionId: __t.connectionId(),
   identity: __t.identity(),
 });
 export type Presence = __Infer<typeof Presence>;
 
-export const Race = __t.object("Race", {
+export const Race = __t.object('Race', {
   id: __t.string(),
   status: __t.string(),
   phaseTicksLeft: __t.u32(),
@@ -55,10 +55,12 @@ export const Race = __t.object("Race", {
   forfeitReason: __t.string(),
   solo: __t.bool(),
   hostIdentity: __t.string(),
+  mode: __t.string(),
+  elapsedTicks: __t.u32(),
 });
 export type Race = __Infer<typeof Race>;
 
-export const RaceFeature = __t.object("RaceFeature", {
+export const RaceFeature = __t.object('RaceFeature', {
   id: __t.u64(),
   room: __t.string(),
   kind: __t.string(),
@@ -69,7 +71,7 @@ export const RaceFeature = __t.object("RaceFeature", {
 });
 export type RaceFeature = __Infer<typeof RaceFeature>;
 
-export const RaceItem = __t.object("RaceItem", {
+export const RaceItem = __t.object('RaceItem', {
   identity: __t.identity(),
   room: __t.string(),
   held: __t.string(),
@@ -79,7 +81,7 @@ export const RaceItem = __t.object("RaceItem", {
 });
 export type RaceItem = __Infer<typeof RaceItem>;
 
-export const RacePlayer = __t.object("RacePlayer", {
+export const RacePlayer = __t.object('RacePlayer', {
   identity: __t.identity(),
   room: __t.string(),
   name: __t.string(),
@@ -101,7 +103,7 @@ export const RacePlayer = __t.object("RacePlayer", {
 });
 export type RacePlayer = __Infer<typeof RacePlayer>;
 
-export const RaceResult = __t.object("RaceResult", {
+export const RaceResult = __t.object('RaceResult', {
   id: __t.string(),
   room: __t.string(),
   raceNumber: __t.u32(),
@@ -117,13 +119,13 @@ export const RaceResult = __t.object("RaceResult", {
 });
 export type RaceResult = __Infer<typeof RaceResult>;
 
-export const RaceTick = __t.object("RaceTick", {
+export const RaceTick = __t.object('RaceTick', {
   scheduledId: __t.u64(),
   scheduledAt: __t.scheduleAt(),
 });
 export type RaceTick = __Infer<typeof RaceTick>;
 
-export const Stats = __t.object("Stats", {
+export const Stats = __t.object('Stats', {
   id: __t.u8(),
   visitors: __t.u32(),
   players: __t.u32(),
@@ -132,11 +134,10 @@ export const Stats = __t.object("Stats", {
 });
 export type Stats = __Infer<typeof Stats>;
 
-export const Visitor = __t.object("Visitor", {
+export const Visitor = __t.object('Visitor', {
   identity: __t.identity(),
   firstSeen: __t.timestamp(),
   lastSeen: __t.timestamp(),
   visits: __t.u32(),
 });
 export type Visitor = __Infer<typeof Visitor>;
-
