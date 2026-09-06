@@ -1,6 +1,6 @@
 export const site = {
   name: 'Duck Off',
-  url: 'https://duck-off.vercel.app',
+  url: 'https://duckoff.fun',
   title: 'Duck Off — tap. squeak. win.',
   description: 'Race rubber ducks with friends in your browser. Tap to paddle, dodge obstacles, and use toys to race ahead in a real-time multiplayer duck race.',
   themeColor: '#fce4d9',

@@ -33,6 +33,6 @@ npm test
 
 ## Site metadata and icons
 
-The public URL is `https://duck-off.vercel.app`. Site copy, canonical URL, and social metadata share `client/src/site.ts`; update that URL if the production domain changes. `robots.txt`, `sitemap.xml`, and the 1200×630 social preview are generated during the static build. The sitemap includes only the homepage; room invite query strings canonicalize to it.
+The public URL is `https://duckoff.fun`. Site copy, canonical URL, and social metadata share `client/src/site.ts`; update that URL if the production domain changes. `robots.txt`, `sitemap.xml`, and the 1200×630 social preview are generated during the static build. The sitemap includes only the homepage; room invite query strings canonicalize to it.
 
 `client/public/site.webmanifest` configures home-screen launch and app icons. Keep its name, description, and colors in sync with `site.ts`. The transparent rubber duck original and generation prompt are in `client/assets/branding/`; browser and home-screen icon exports live in `client/public/`. This sets up app presentation; the multiplayer game still needs an internet connection.
