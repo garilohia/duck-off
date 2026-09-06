@@ -22,7 +22,7 @@ export default async function Image() {
           <div style={{ display: 'flex', fontSize: 104, fontWeight: 600, letterSpacing: -5 }}>
             Duck <span style={{ color: '#ed7054', marginLeft: 20 }}>Off</span>
           </div>
-          <div style={{ fontSize: 36, marginTop: 24 }}>Multiplayer duck racing</div>
+          <div style={{ fontSize: 36, marginTop: 24 }}>{site.slogan}</div>
           <div style={{ fontSize: 22, marginTop: 44, color: '#496681' }}>{new URL(site.url).hostname}</div>
         </div>
         <img src={`data:image/png;base64,${duck.toString('base64')}`} width={440} height={440} alt="" style={{ objectFit: 'contain' }} />
