@@ -94,7 +94,7 @@ void main(){
  float spec=pow(max(dot(n,H),0.),90.)*.8;float fres=pow(1.-max(dot(n,V),0.),3.);
  float bank=abs(vUv.x-.5)*2.;
  vec3 color=mix(mix(uDeep,uBlue,smoothstep(.15,.85,h)),uShallow,smoothstep(.55,1.,bank)*.55);
- float flow=noise(vec2(p.x*2.2,p.y*.28-t*1.6))*noise(vec2(p.x*1.1+3.,p.y*.5-t*.9));color=mix(color,uFoam,smoothstep(.42,.6,flow)*.18);
+ float flow=noise(vec2(p.x*2.2,p.y*.28-t*1.6))*noise(vec2(p.x*1.1+3.,p.y*.5-t*.9));color=mix(color,uFoam,smoothstep(.5,.7,flow)*.06);
  vec2 q=p*1.3+vec2(noise(p*.45+vec2(t*.3,0.)),noise(p*.45-vec2(0.,t*.25)))*3.2;float a=sin(q.x*1.7+q.y*.6+t),b=sin(q.y*1.4-q.x*.8-t*.9);float caustic=pow(1.-abs(a*b),8.);
  color=mix(color,uFoam,caustic*.1);color=mix(color,uSky,fres*.3);color+=spec;
  float edge=smoothstep(.86,1.,bank);float lace=noise(vec2(p.y*2.5+t*1.2,p.x*4.))*.5+.5;color=mix(color,uFoam,edge*(.3+.5*lace));

@@ -55,6 +55,7 @@ import RaceFeatureRow from "./race_feature_table";
 import RaceItemRow from "./race_item_table";
 import RacePlayerRow from "./race_player_table";
 import RaceResultRow from "./race_result_table";
+import StatsRow from "./stats_table";
 
 /** Type-only namespace exports for generated type groups. */
 
@@ -166,6 +167,17 @@ const tablesSchema = __schema({
       { name: 'race_result_id_key', constraint: 'unique', columns: ['id'] },
     ],
   }, RaceResultRow),
+  stats: __table({
+    name: 'stats',
+    indexes: [
+      { accessor: 'id', name: 'stats_id_idx_btree', algorithm: 'btree', columns: [
+        'id',
+      ] },
+    ],
+    constraints: [
+      { name: 'stats_id_key', constraint: 'unique', columns: ['id'] },
+    ],
+  }, StatsRow),
 });
 
 /** The schema information for all reducers in this module. This is defined the same way as the reducers would have been defined in the server, except the body of the reducer is omitted in code generation. */

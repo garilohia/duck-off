@@ -122,3 +122,20 @@ export const RaceTick = __t.object("RaceTick", {
 });
 export type RaceTick = __Infer<typeof RaceTick>;
 
+export const Stats = __t.object("Stats", {
+  id: __t.u8(),
+  visitors: __t.u32(),
+  players: __t.u32(),
+  races: __t.u32(),
+  soloRuns: __t.u32(),
+});
+export type Stats = __Infer<typeof Stats>;
+
+export const Visitor = __t.object("Visitor", {
+  identity: __t.identity(),
+  firstSeen: __t.timestamp(),
+  lastSeen: __t.timestamp(),
+  visits: __t.u32(),
+});
+export type Visitor = __Infer<typeof Visitor>;
+

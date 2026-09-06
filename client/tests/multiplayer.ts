@@ -37,14 +37,14 @@ async function main(){
  await until(()=>first.db.race.id.find(room)?.status==='racing');
  assert.equal(first.db.race.id.find(room+'-B')?.status,'lobby');
  await assert.rejects(first.reducers.join({name:'Escape',duckIndex:0,room:room+'-B'}));
- const late=await connect('Late Duck',7);await late.reducers.tap({});assert.equal(late.db.racePlayer.identity.find(late.identity!)!.pos,0);
+ const late=await connect('Late Duck',7);await late.reducers.tap({count:1});assert.equal(late.db.racePlayer.identity.find(late.identity!)!.pos,0);
  await until(()=>[...first.db.player.iter()].filter(p=>p.room===room&&p.online).length===12);
  await assert.rejects(connect('Thirteenth',8),/full/);
  await assert.rejects(first.reducers.join({name:'Speedy',duckIndex:10,room}),/ducks/);
  console.log('PASS: a thirteenth duck is turned away from a full room; duck indexes past the roster are rejected.');
  console.log('PASS: concurrent start clicks create one countdown; room isolation and late-join rules hold.');
  let boosts=false,rankChecks=0;const started=Date.now(),last=Array(RACERS).fill(0),requests:Promise<void>[]=[];
- const timer=setInterval(()=>{const now=Date.now();racers.forEach((c,i)=>{const interval=i===0?60:95+i*8;if(now-last[i]>=interval){last[i]=now;requests.push(c.reducers.tap({}));}})},20);
+ const timer=setInterval(()=>{const now=Date.now();racers.forEach((c,i)=>{const interval=i===0?60:95+i*8;if(now-last[i]>=interval){last[i]=now;requests.push(c.reducers.tap({count:1}));}})},20);
  try{await until(()=>{
   const rows=[...first.db.racePlayer.iter()].filter(p=>p.room===room&&p.active);
   const oracle=[...rows].sort((a,b)=>a.place&&b.place?a.place-b.place:a.place?-1:b.place?1:a.drowned!==b.drowned?(a.drowned?1:-1):b.pos-a.pos||(key(a)<key(b)?-1:1));

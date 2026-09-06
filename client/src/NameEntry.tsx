@@ -3,8 +3,8 @@ import DuckPreview from './three/DuckPreview';
 import {DUCKS,DUCK_COUNT} from './palette';
 import {unlockAudio,squeak} from './squeak';
 type Mode='random'|'code';
-type Props={onJoin:(name:string,index:number,room:string)=>Promise<void>;onRandomJoin:(name:string,index:number)=>Promise<void>;onSolo:(name:string,index:number)=>Promise<void>;error?:string;initialRoom:string};
-export default function NameEntry({onJoin,onRandomJoin,onSolo,error,initialRoom}:Props){
+type Props={onJoin:(name:string,index:number,room:string)=>Promise<void>;onRandomJoin:(name:string,index:number)=>Promise<void>;onSolo:(name:string,index:number)=>Promise<void>;error?:string;initialRoom:string;stats?:{visitors:number;players:number;races:number;soloRuns:number}};
+export default function NameEntry({onJoin,onRandomJoin,onSolo,error,initialRoom,stats}:Props){
  const [room,setRoom]=useState(initialRoom);
  // A shared link pre-selects the code path; everyone else gets random matching.
  const [mode,setMode]=useState<Mode>(initialRoom?'code':'random');
@@ -36,6 +36,6 @@ export default function NameEntry({onJoin,onRandomJoin,onSolo,error,initialRoom}
      <p className="entry-note">{mode==='code'?'Share the code with friends. Start when you’re ready.':'We’ll find a room with other ducks somewhere in the world. If the river is quiet, you’ll open one for the next duck to find.'}</p>
     </form>
    </section>
-  </div><footer className="entry-footer"><span>Made for little moments together.</span><span>Sound on for tiny squeaks ♫</span></footer>
+  </div><footer className="entry-footer"><span>Made for little moments together.</span>{stats&&stats.players>0&&<span className="flock-count">🦆 {stats.players.toLocaleString()} {stats.players===1?'duck has':'ducks have'} raced · {(stats.races+stats.soloRuns).toLocaleString()} {stats.races+stats.soloRuns===1?'race':'races'}</span>}<span>Sound on for tiny squeaks ♫</span></footer>
  </main>;
 }

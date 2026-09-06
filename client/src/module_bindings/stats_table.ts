@@ -10,6 +10,10 @@ import {
   type Infer as __Infer,
 } from "spacetimedb";
 
-export default {
-  count: __t.u8(),
-};
+export default __t.row({
+  id: __t.u8().primaryKey(),
+  visitors: __t.u32(),
+  players: __t.u32(),
+  races: __t.u32(),
+  soloRuns: __t.u32().name("solo_runs"),
+});

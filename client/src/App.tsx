@@ -20,6 +20,7 @@ function Game(){
  const [items]=useTable(tables.raceItem.where(p=>p.room.eq(room)));
  const [effects]=useTable(tables.itemEffect.where(p=>p.room.eq(room)));
  const [features]=useTable(tables.raceFeature.where(p=>p.room.eq(room)));
+ const [statsRows]=useTable(tables.stats);
  // Our own player row follows us across rooms, so random matching can read the server's assignment.
  const [,selfReady]=useTable(tables.player.where(p=>p.identity.eq(identity??new Identity(0n))),{enabled:!!identity});
  const join=useReducer(reducers.join),joinRandom=useReducer(reducers.joinRandom),tap=useReducer(reducers.tap),start=useReducer(reducers.startRace);
@@ -56,11 +57,11 @@ function Game(){
  // Practice alone: a private room that starts straight away, with a denser obstacle course.
  const soloRun=async(name:string,duckIndex:number)=>{const nextRoom=`SOLO-${Math.floor(Math.random()*36**5).toString(36).toUpperCase().padStart(5,'0')}`;await join({name,duckIndex,room:nextRoom});finishJoin(name,duckIndex,nextRoom,false);};
  const friendly=(e:unknown,fallback:string)=>e instanceof Error&&e.message?e.message:fallback;
- useGameTools({connected:isActive,race:races[0],items:items.map(i=>({...i,identity:i.identity.toHexString()})),features:features.map(f=>({kind:f.kind,lane:f.lane,pos:f.pos})),players:players.map(p=>({name:p.name,active:p.active,lane:p.lane,pos:p.pos,place:p.place,rank:p.rank,taps:p.taps}))},(name,index)=>joinGame(name,index,room,viaCode),()=>tap(),()=>start(),()=>useItem(),direction=>switchLane({direction}),amount=>steer({amount}));
+ useGameTools({connected:isActive,race:races[0],items:items.map(i=>({...i,identity:i.identity.toHexString()})),features:features.map(f=>({kind:f.kind,lane:f.lane,pos:f.pos})),players:players.map(p=>({name:p.name,active:p.active,lane:p.lane,pos:p.pos,place:p.place,rank:p.rank,taps:p.taps}))},(name,index)=>joinGame(name,index,room,viaCode),()=>tap({count:1}),()=>start(),()=>useItem(),direction=>switchLane({direction}),amount=>steer({amount}));
  if(!isActive||!identity||!selfReady||!raceReady||!playersReady||!legendsReady)return <main className="splash"><div className="splash-duck"><RubberDuck size={112} bob/></div><h1>{connectionError||slow?'A little ripple in the connection':'Filling the little lagoon…'}</h1><p>{connectionError||slow?'Your duck is safe. Check your connection and try again.':'Getting the water just right for you.'}</p>{(connectionError||slow)&&<button className="primary" onClick={()=>location.reload()}>Try again ↻</button>}</main>;
- if(!entered)return <NameEntry initialRoom={linkedRoom} error={error} onJoin={async(name,index,nextRoom)=>{try{await joinGame(name,index,nextRoom)}catch(e){setError(friendly(e,'Couldn’t hop in. Please try again.'))}}} onRandomJoin={async(name,index)=>{try{await findRoom(name,index)}catch(e){setError(friendly(e,'Couldn’t find a room. Please try again.'))}}} onSolo={async(name,index)=>{try{await soloRun(name,index)}catch(e){setError(friendly(e,'Couldn’t open a practice river. Please try again.'))}}}/>;
+ if(!entered)return <NameEntry initialRoom={linkedRoom} error={error} stats={statsRows[0]} onJoin={async(name,index,nextRoom)=>{try{await joinGame(name,index,nextRoom)}catch(e){setError(friendly(e,'Couldn’t hop in. Please try again.'))}}} onRandomJoin={async(name,index)=>{try{await findRoom(name,index)}catch(e){setError(friendly(e,'Couldn’t find a room. Please try again.'))}}} onSolo={async(name,index)=>{try{await soloRun(name,index)}catch(e){setError(friendly(e,'Couldn’t open a practice river. Please try again.'))}}}/>;
  if(!races[0])return <main className="splash"><h1>Opening room {room}…</h1><button className="primary" onClick={()=>setEntered(false)}>Back to my duck</button></main>;
- return <RaceScreen race={races[0]} players={players} legends={legends} items={items} effects={effects} features={features} results={results.filter(r=>r.raceNumber===races[0].raceNumber)} identity={identity.toHexString()} onTap={()=>tap()} onStart={()=>start()} onUseItem={()=>useItem()} onSwitchLane={direction=>switchLane({direction})} onSteer={amount=>steer({amount})} onLeave={leave}/>;
+ return <RaceScreen race={races[0]} players={players} legends={legends} items={items} effects={effects} features={features} results={results.filter(r=>r.raceNumber===races[0].raceNumber)} identity={identity.toHexString()} onTap={count=>tap({count})} onStart={()=>start()} onUseItem={()=>useItem()} onSwitchLane={direction=>switchLane({direction})} onSteer={amount=>steer({amount})} onLeave={leave}/>;
 }
 export default function App(){
  const builder=useMemo(()=>{
@@ -69,7 +70,9 @@ export default function App(){
   const key=`duckoff_token:${uri}:${database}`;
   // SDK 2.9 decompresses messages concurrently; small tap messages can overtake
   // compressed race ticks and roll back standings. Room-scoped updates are small.
-  return DbConnection.builder().withCompression('none').withUri(uri).withDatabaseName(database).withToken(sessionStorage.getItem(key)??undefined).onConnect((_ctx,_identity,token)=>sessionStorage.setItem(key,token));
+  // The token lives in localStorage so one browser keeps one identity across visits: that is how we count people without accounts.
+  const read=()=>{try{return localStorage.getItem(key)??sessionStorage.getItem(key)??undefined}catch{return undefined}};
+  return DbConnection.builder().withCompression('none').withUri(uri).withDatabaseName(database).withToken(read()).onConnect((_ctx,_identity,token)=>{try{localStorage.setItem(key,token)}catch{sessionStorage.setItem(key,token)}});
  },[]);
  return <SpacetimeDBProvider connectionBuilder={builder}><Game/></SpacetimeDBProvider>;
 }
