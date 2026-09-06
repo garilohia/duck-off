@@ -3,15 +3,15 @@ export const PAL={water:'#428fda',deep:'#2854c7',sand:'#fce4d9',pink:'#f27860',y
 export type Duck={name:string;tagline:string;sticker:string};
 export const DUCKS:readonly Duck[]=[
  {name:'Buttercup',tagline:'a little pocket of sunshine',sticker:'very huggable'},
- {name:'Pudding',tagline:'bakes hugs, mostly',sticker:'extra squishy'},
+ {name:'Pudding',tagline:'professional napper. amateur racer.',sticker:'do not disturb'},
  {name:'Skipper',tagline:'tiny sailor. big feelings.',sticker:'sea legs'},
- {name:'Berry',tagline:'berry small. berry brave.',sticker:'berry brave'},
- {name:'Sprout',tagline:'growing at their own pace',sticker:'still growing'},
- {name:'Captain Pip',tagline:'steals hearts, not treasure',sticker:'heart thief'},
- {name:'Mochi',tagline:'soft on the outside. also inside.',sticker:'soft inside'},
- {name:'Your Fluffiness',tagline:'royally round',sticker:'royal fluff'},
- {name:'Chef Nibbles',tagline:'slices cake, never hearts',sticker:'cake slicer'},
- {name:'Deputy Dumpling',tagline:'keeps the peace. and the crumbs.',sticker:'snack sheriff'},
+ {name:'Berry',tagline:'berry small. berry brave.',sticker:'pocket sized'},
+ {name:'Sprout',tagline:'growing at their own pace',sticker:'fresh leaf'},
+ {name:'Captain Pip',tagline:'steals hearts, not treasure',sticker:'sails at dawn'},
+ {name:'Mochi',tagline:'soft on the outside. also inside.',sticker:'100% squish'},
+ {name:'Your Fluffiness',tagline:'royally round',sticker:'crown included'},
+ {name:'Chef Nibbles',tagline:'slices cake, never hearts',sticker:'chef’s kiss'},
+ {name:'Deputy Dumpling',tagline:'keeps the peace. and the crumbs.',sticker:'on patrol'},
 ];
 export const DUCK_COUNT=DUCKS.length;
 export const DUCK_COLORS=['#ffcb0d','#ffd21a','#ffcc12','#ffcf1c','#ffd324','#ffc70e','#ffd52b','#ffcd16','#ffd11e','#ffc914'];

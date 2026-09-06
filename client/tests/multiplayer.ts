@@ -8,7 +8,7 @@ const clients:DbConnection[]=[];
 // Ten racers plus two late joiners fill a room to its twelve-duck cap.
 const RACERS=10;
 const room=process.env.TEST_ROOM??`T-${Date.now().toString(36).toUpperCase()}`;
-const uri=process.env.TEST_STDB_URI??'ws://127.0.0.1:3030',database=process.env.TEST_STDB_MODULE??'duckoff-mobile';
+const uri=process.env.TEST_STDB_URI??'ws://127.0.0.1:3030',database=process.env.TEST_STDB_MODULE??'duckoff';
 async function connect(name:string,i:number,selectedRoom=room,join=true){return new Promise<DbConnection>((resolve,reject)=>{
  const timer=setTimeout(()=>reject(Error('Connection timed out')),20000);
  DbConnection.builder().withCompression('none').withUri(uri).withDatabaseName(database).onConnect(c=>{clients.push(c);beats.push(setInterval(()=>{try{void c.reducers.heartbeat({}).catch(()=>{})}catch{}},4000));c.subscriptionBuilder().onApplied(()=>{void(async()=>{if(join)await c.reducers.join({name,duckIndex:i%10,room:selectedRoom});clearTimeout(timer);resolve(c)})().catch(reject)}).subscribeToAllTables()}).onConnectError((_c,e)=>{clearTimeout(timer);reject(e)}).build();

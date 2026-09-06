@@ -39,7 +39,7 @@ console.log('PASS: shields, non-stacking slowdowns, item rotation, modified cros
 // Every test client heartbeats like the app does, so the 12-second staleness sweep never drops it.
 const beats:ReturnType<typeof setInterval>[]=[];
 const clients:DbConnection[]=[],room=`I-${Date.now().toString(36).toUpperCase()}`;
-const uri=process.env.TEST_STDB_URI??'ws://127.0.0.1:3030',database=process.env.TEST_STDB_MODULE??'duckoff-items';
+const uri=process.env.TEST_STDB_URI??'ws://127.0.0.1:3030',database=process.env.TEST_STDB_MODULE??'duckoff';
 const sleep=(ms:number)=>new Promise(r=>setTimeout(r,ms));
 async function until(check:()=>boolean,timeout=60000){const started=Date.now();while(!check()){if(Date.now()-started>timeout)throw Error(`Timed out waiting for: ${check.toString().slice(0,160)}`);await sleep(25)}}
 async function connect(name:string,selectedRoom=room){return new Promise<DbConnection>((resolve,reject)=>{
@@ -128,8 +128,9 @@ async function main(){
   assert.equal(first.db.racePlayer.identity.find(outsider.identity!)?.pos,0);
   assert.equal(first.db.raceItem.identity.find(spectator.identity!),null);
   console.log('PASS: bomb is consumed once, hits a group, excludes its thrower and other rooms, and shields absorb hits.');
-  const bubble=racers.find(c=>state(c).held==='bubble'&&racers.some(other=>row(other).pos>row(c).pos))!;
-  assert(bubble,'A homing-bubble holder should have a duck ahead');
+  const bubble=racers.find(c=>state(c).held==='bubble')!;assert(bubble,'someone holds the homing bubble');
+  // If the bubble holder happens to lead, send a pacer past it so there is a duck to chase.
+  if(!racers.some(other=>row(other).pos>row(bubble).pos)){const pacer=racers.find(c=>c!==bubble&&c!==keeper&&!state(c).held&&!row(c).drowned)!;paddling([pacer]);await until(()=>row(pacer).pos>row(bubble).pos+30);await pause();}
   await bubble.reducers.useItem({});
   await until(()=>[...first.db.itemEffect.iter()].some(e=>e.room===room&&e.kind==='bubble'&&e.flightTicks===0));
   const shot=[...first.db.itemEffect.iter()].find(e=>e.room===room&&e.kind==='bubble')!;
@@ -170,19 +171,6 @@ async function main(){
   await sinker.reducers.tap({});await assert.rejects(sinker.reducers.useItem({}));
   assert(shortOfIt.filter(c=>c!==victim&&c!==keeper&&c!==sinker).every(c=>row(c).bonks===bonksBefore.get(c)),'ducks in open lanes are untouched');
   console.log(`PASS: ${obstacle.kind}s bonk a duck in their lane, the whirlpool drowns one and a shield saves another, open lanes are safe.`);
-  // Rapids give a free boost to whoever rides them.
-  await until(()=>racers.every(c=>state(c).slowTicks===0));
-  const behind=racers.filter(c=>!row(c).drowned&&row(c).pos<rapids[0].pos-40).sort((a,b)=>row(a).pos-row(b).pos);assert(behind.length>=2,'two ducks still short of the rapids');
-  const rider=behind[0],walker=behind[1];
-  const dry=Array.from({length:LANES},(_,i)=>i).filter(l=>!rapids.some(f=>f.lane===l));
-  assert.equal(first.db.race.id.find(room)?.status,'racing','the race is still on for the rapids check');
-  await steer(rider,rapids[0].lane);await steer(walker,dry[0]);
-  await Promise.all(racers.map(c=>c.reducers.tap({})));
-  await until(()=>row(rider).boostTicksLeft===0&&row(walker).boostTicksLeft===0);
-  paddling([rider,walker]);await until(()=>row(rider).pos>rapids[0].pos&&row(walker).pos>rapids[0].pos);
-  assert(row(rider).boostTicksLeft>0||row(rider).pos>row(walker).pos+20,'the rapids rider is whooshed along');
-  await pause();
-  console.log('PASS: rapids whoosh the duck that rides them.');
   paddling();await until(()=>first.db.race.id.find(room)?.status==='finished');await pause();
   const results=[...first.db.raceResult.iter()].filter(r=>r.room===room).sort((a,b)=>a.place-b.place);
   assert.deepEqual(results.map(r=>r.place),Array.from({length:8},(_,i)=>i+1));
@@ -199,10 +187,17 @@ async function main(){
   // Edge case: the whirlpool takes the only duck still swimming and nobody crossed, so the river wins and there is no podium.
   const solo=await connect('Solo swimmer',room+'-C');
   await solo.reducers.startRace({});await until(()=>solo.db.race.id.find(room+'-C')?.status==='countdown');
-  const pool=[...solo.db.raceFeature.iter()].find(f=>f.room===room+'-C'&&f.kind==='whirlpool')!;
-  await steer(solo,pool.lane);
+  const soloRow=()=>solo.db.racePlayer.identity.find(solo.identity!)!,soloFeatures=[...solo.db.raceFeature.iter()].filter(f=>f.room===room+'-C');
+  const pool=soloFeatures.find(f=>f.kind==='whirlpool')!,rapid=soloFeatures.find(f=>f.kind==='rapids'&&f.seq===3)!;
+  // Rapids first: riding the white water gives a free whoosh.
+  await steer(solo,rapid.lane);
   await until(()=>solo.db.race.id.find(room+'-C')?.status==='racing');
-  paddling([solo]);await until(()=>solo.db.racePlayer.identity.find(solo.identity!)!.drowned);await pause();
+  let whooshed=false;paddling([solo]);await until(()=>{if(soloRow().boostTicksLeft>0&&soloRow().pos>rapid.pos)whooshed=true;return soloRow().pos>rapid.pos+40});await pause();
+  assert(whooshed,'the rapids whoosh the duck that rides them');
+  console.log('PASS: rapids whoosh the duck that rides them.');
+  // Then the whirlpool.
+  await steer(solo,pool.lane);
+  paddling([solo]);await until(()=>soloRow().drowned);await pause();
   await until(()=>solo.db.race.id.find(room+'-C')?.status==='finished');
   const soloRace=solo.db.race.id.find(room+'-C')!;
   assert.equal(soloRace.solo,true);assert([...solo.db.raceFeature.iter()].filter(f=>f.room===room+'-C'&&(f.kind==='rock'||f.kind==='log')).length>layout.filter(f=>f.kind==='rock'||f.kind==='log').length,'a solo run is a denser obstacle course');

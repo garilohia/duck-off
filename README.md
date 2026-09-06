@@ -20,11 +20,9 @@ After changing the module, run `npm run generate` to refresh `client/src/module_
 
 ## Test
 
-Publish the module to the local test databases first, then run everything:
+The tests drive real clients against the local `duckoff` database (the same one the dev server uses). `npm test` republishes the module there with a data wipe first, so any open dev-server tabs will be kicked back to the home screen:
 
 ```bash
-spacetime publish --server http://127.0.0.1:3030 --module-path server/spacetimedb duckoff-mobile -y
-spacetime publish --server http://127.0.0.1:3030 --module-path server/spacetimedb duckoff-items -y
 npm test
 ```
 
