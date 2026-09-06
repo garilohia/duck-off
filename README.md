@@ -8,7 +8,7 @@ The module is split into `items.ts` (shared gameplay constants, also imported by
 - `server/spacetimedb/` – SpacetimeDB TypeScript module: rooms, matchmaking, race ticks, items. Live database: `duckoff-rooms-gari-20260905` on maincloud.
 - `client/tests/` – integration tests that drive real clients against a local SpacetimeDB.
 
-The first player to join a room becomes its host. Everyone waits in the lobby until the host presses **Start race**; joining or closing the instructions never starts a countdown, including in practice rooms. Only the host can start a rematch. If the host leaves or goes offline, another online player becomes host.
+The first player to join a room becomes its host. In a code room everyone waits in the lobby until the host presses **Start race**, and only the host can start a rematch; if the host leaves or goes offline, another online player becomes host. Practice rivers are single-player and start on their own. Random matching only ever hands out rooms that are waiting with company and space; if every such room is mid-race, the newcomer opens a fresh room straight away rather than spectating.
 
 ## Develop
 

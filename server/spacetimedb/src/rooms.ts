@@ -62,18 +62,18 @@ export const join = stdb.reducer({ name: t.string(), duckIndex: t.u8(), room: t.
   joinRoom(ctx, name, duckIndex, room),
 );
 
-// Random matching: rooms with company that are not full, waiting rooms first; never a practice river.
+// Random matching: a room that is waiting (lobby or podium), has company and has space; never a practice
+// river, never a race already under way. Nobody is made to spectate a stranger's race: if no such room
+// exists, the newcomer opens a fresh one and becomes the next duck's match.
 export const joinRandom = stdb.reducer({ name: t.string(), duckIndex: t.u8() }, (ctx, { name, duckIndex }) => {
   const current = ctx.db.racePlayer.identity.find(ctx.sender);
   if (current?.active && isLive(ctx.db.race.id.find(current.room)?.status ?? '')) {
     throw new SenderError('Finish this race before finding another room.');
   }
-  const candidates = [...ctx.db.race.iter()]
-    .filter((r) => r.mode !== 'practice')
+  const pool = [...ctx.db.race.iter()]
+    .filter((r) => r.mode !== 'practice' && (r.status === 'lobby' || r.status === 'finished'))
     .map((r) => ({ race: r, count: othersOnline(ctx, r.id, ctx.sender) }))
     .filter((r) => r.count > 0 && r.count < MAX_DUCKS);
-  const waiting = candidates.filter((r) => r.race.status === 'lobby' || r.race.status === 'finished');
-  const pool = waiting.length ? waiting : candidates;
   let room: string;
   if (pool.length) {
     pool.sort((a, b) => (a.race.id < b.race.id ? -1 : 1));

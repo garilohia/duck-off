@@ -103,6 +103,16 @@ export default function RaceScreen(props: Props) {
     setError('');
   }, [race.status]);
 
+  // A practice river is single-player: it starts by itself once the instructions are out of the way.
+  const practiceStarted = useRef(false);
+  useEffect(() => {
+    if (race.mode !== 'practice' || race.status !== 'lobby' || showHowTo || !isHost || practiceStarted.current) return;
+    practiceStarted.current = true;
+    void onStart().catch(() => {
+      practiceStarted.current = false;
+    });
+  }, [race.mode, race.status, showHowTo, isHost, onStart]);
+
   const url = new URL(location.href);
   url.searchParams.set('room', race.id);
   const shareRoom = async () => {
@@ -317,9 +327,11 @@ export default function RaceScreen(props: Props) {
           <div className="eyebrow">{race.mode === 'practice' ? 'YOUR PRACTICE RIVER' : 'THE FLOCK IS GATHERING'}</div>
           <h1>Everyone here?</h1>
           <p>
-            {isHost
-              ? 'Invite your friends. Press Start race when everyone is here.'
-              : `${hostName} is hosting. The race starts when they press Start race.`}
+            {race.mode === 'practice'
+              ? 'Just you and the river. Off you go.'
+              : isHost
+                ? 'Invite your friends. Press Start race when everyone is here.'
+                : `${hostName} is hosting. The race starts when they press Start race.`}
           </p>
           <div className="roster" aria-label="Players in the room">
             {online.map((p) => (

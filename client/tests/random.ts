@@ -93,16 +93,11 @@ async function main() {
   await until(() => onlineIn(e, codeRoom) >= 12);
   const f = await connect();
   await f.reducers.joinRandom({ name: 'Latecomer', duckIndex: 5 });
-  assert.equal(roomOf(f), first, 'a full room is skipped');
-  const g = await connect();
-  await assert.rejects(g.reducers.join({ name: 'Overflow', duckIndex: 6, room: codeRoom }), /full/);
-  assert.equal(roomOf(g), undefined, 'a rejected join leaves no player row behind');
-  assert.equal(
-    f.db.racePlayer.identity.find(f.identity!)?.active,
-    a.db.race.id.find(first)?.status === 'finished',
-    'late arrivals spectate a live race',
-  );
-  console.log('PASS: full rooms are skipped by matching and refuse typed joins; late arrivals wait for the next race.');
+  assert.notEqual(roomOf(f), codeRoom, 'a full room is skipped');
+  assert.notEqual(roomOf(f), first, 'a race already under way is never handed to a random joiner');
+  assert.equal(f.db.race.id.find(roomOf(f)!)?.status, 'lobby', 'the newcomer gets a fresh waiting room instead');
+  assert(f.db.racePlayer.identity.find(f.identity!)?.active, 'and races straight away, never spectates');
+  console.log('PASS: full and racing rooms are skipped by matching; a newcomer opens a fresh room instead of waiting.');
   // With every room full, a random joiner is never turned away: they open a fresh room and wait alone.
   await Promise.all(
     Array.from({ length: 12 - onlineIn(a, first) }, async (_, i) => {
@@ -113,20 +108,21 @@ async function main() {
   await until(() => onlineIn(a, first) >= 12);
   const h = await connect();
   await h.reducers.joinRandom({ name: 'Thirteenth', duckIndex: 7 });
-  assert(![first, codeRoom].includes(roomOf(h)!), `got a fresh room, not ${roomOf(h)}`);
-  assert.equal(onlineIn(h, roomOf(h)!), 1, 'alone in the new room');
+  assert(![first, codeRoom].includes(roomOf(h)!), `got a waiting room, not ${roomOf(h)}`);
+  assert.equal(roomOf(h), roomOf(f), "the fresh room a newcomer opened becomes the next duck's match");
   assert.equal(h.db.race.id.find(roomOf(h)!)?.status, 'lobby');
-  console.log('PASS: when every room is full, a random joiner opens a new room alone.');
+  console.log('PASS: when every room is full or racing, a random joiner opens a new room and the next one joins it.');
   // A phone that goes quiet drops off the roster after 12s even though its socket is still open.
+  const base = onlineIn(h, roomOf(h)!);
   const quiet = await connect();
   clearInterval(beats.pop()!);
   await quiet.reducers.join({ name: 'Sleepy', duckIndex: 2, room: roomOf(h)! });
-  await until(() => onlineIn(h, roomOf(h)!) === 2);
-  await until(() => onlineIn(h, roomOf(h)!) === 1, 20000);
+  await until(() => onlineIn(h, roomOf(h)!) === base + 1);
+  await until(() => onlineIn(h, roomOf(h)!) === base, 20000);
   assert.equal(h.db.player.identity.find(quiet.identity!)?.online, false);
   assert.equal(h.db.racePlayer.identity.find(quiet.identity!), null, 'the lobby lets a silent duck go');
   await quiet.reducers.heartbeat({});
-  await until(() => onlineIn(h, roomOf(h)!) === 2);
+  await until(() => onlineIn(h, roomOf(h)!) === base + 1);
   console.log('PASS: a silent client is dropped from the lobby after 12s and comes back with a heartbeat.');
   beats.forEach(clearInterval);
   for (const x of clients) x.disconnect();
