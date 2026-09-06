@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start --hostname 0.0.0.0",
     "typecheck": "tsc --noEmit",
-    "test": "tsx tests/items.ts && tsx tests/random.ts && tsx tests/multiplayer.ts",
+    "test": "tsx tests/hosts.ts && tsx tests/items.ts && tsx tests/random.ts && tsx tests/multiplayer.ts",
     "pretest": "spacetime publish --server http://127.0.0.1:3030 --module-path ../server/spacetimedb duckoff --delete-data=always -y"
   },
   "dependencies": {

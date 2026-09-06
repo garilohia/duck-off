@@ -23,7 +23,10 @@ async function main(){
  await until(()=>[...first.db.racePlayer.iter()].filter(p=>p.room===room&&p.active).length===RACERS);
  await sleep(9000);assert.equal(first.db.race.id.find(room)?.status,'lobby');
  console.log(`PASS: ${RACERS} players wait for a manual start; unjoined users cannot start.`);
- await Promise.all([first.reducers.startRace({}),racers[1].reducers.startRace({})]);
+ assert.equal(first.db.race.id.find(room)?.hostIdentity,first.identity!.toHexString(),'the room creator remains host');
+ await assert.rejects(racers[1].reducers.startRace({}),/host/);
+ assert.equal(first.db.race.id.find(room)?.status,'lobby','a guest cannot start the countdown');
+ await Promise.all([first.reducers.startRace({}),first.reducers.startRace({})]);
  await until(()=>first.db.race.id.find(room)?.status==='countdown');assert.equal(first.db.race.id.find(room)?.raceNumber,1);
  // Everyone races the same whirlpool-free lane, so rocks, logs and rapids treat the field equally and speed decides.
  await until(()=>[...first.db.raceFeature.iter()].filter(f=>f.room===room).length>=10);
@@ -67,10 +70,14 @@ async function main(){
  racers[1].disconnect();await sleep(11000);
  assert.equal(late.db.race.id.find(room)?.status,'finished');assert.equal([...late.db.raceResult.iter()].filter(p=>p.room===room).length,RACERS);assert.equal(late.db.race.id.find(room)?.raceNumber,1);
  console.log('PASS: results survive disconnects and room changes, with no automatic rematch.');
- await late.reducers.startRace({});await until(()=>late.db.race.id.find(room)?.raceNumber===2);
+ await until(()=>{const host=late.db.race.id.find(room)?.hostIdentity;return !!host&&host!==first.identity!.toHexString()&&host!==racers[1].identity!.toHexString()});
+ const newHost=clients.find(c=>c.identity!.toHexString()===late.db.race.id.find(room)!.hostIdentity)!;
+ const guest=newHost===late?racers[2]:late;
+ await assert.rejects(guest.reducers.startRace({}),/host/);
+ await newHost.reducers.startRace({});await until(()=>late.db.race.id.find(room)?.raceNumber===2);
  assert.equal(late.db.racePlayer.identity.find(late.identity!)!.active,true);assert.equal(late.db.racePlayer.identity.find(late.identity!)!.pos,0);
  assert.equal([...late.db.raceResult.iter()].filter(p=>p.room===room).length,0);
- console.log('PASS: manual rematch promotes spectators and resets progress and results.');
+ console.log('PASS: the replacement host alone can start a rematch; spectators are promoted and results reset.');
  await late.reducers.leaveRoom({});
  assert.equal(late.db.player.identity.find(late.identity!)?.online,false);assert.equal(late.db.racePlayer.identity.find(late.identity!),null);
  // Nobody paddles in race 2: after 15 idle seconds it is forfeited, with no winner and no podium.

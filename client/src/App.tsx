@@ -54,7 +54,7 @@ function Game(){
  useEffect(()=>{if(!entered||!raceReady||races[0]||rejoining.current)return;rejoining.current=true;const name=localStorage.getItem('duckoff_name')||'Duck',duckIndex=Number(localStorage.getItem('duckoff_duck'))||0;void join({name,duckIndex,room}).catch(()=>{}).finally(()=>{rejoining.current=false})},[entered,raceReady,races,room,join]);
  // Main menu: leave the results behind and start over with a clean entry screen (random matching by default).
  const leave=()=>{void leaveRoom().catch(()=>{});setEntered(false);setViaCode(false);setLinkedRoom('');setError('');const url=new URL(location.href);url.searchParams.delete('room');history.replaceState(null,'',url);};
- // Practice alone: a private room that starts straight away, with a denser obstacle course.
+ // Practice alone: a separate room with a denser obstacle course and a manual start.
  const soloRun=async(name:string,duckIndex:number)=>{const nextRoom=`SOLO-${Math.floor(Math.random()*36**5).toString(36).toUpperCase().padStart(5,'0')}`;await join({name,duckIndex,room:nextRoom});finishJoin(name,duckIndex,nextRoom,false);};
  const friendly=(e:unknown,fallback:string)=>e instanceof Error&&e.message?e.message:fallback;
  useGameTools({connected:isActive,race:races[0],items:items.map(i=>({...i,identity:i.identity.toHexString()})),features:features.map(f=>({kind:f.kind,lane:f.lane,pos:f.pos})),players:players.map(p=>({name:p.name,active:p.active,lane:p.lane,pos:p.pos,place:p.place,rank:p.rank,taps:p.taps}))},(name,index)=>joinGame(name,index,room,viaCode),()=>tap({count:1}),()=>start(),()=>useItem(),direction=>switchLane({direction}),amount=>steer({amount}));

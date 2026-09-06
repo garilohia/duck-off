@@ -8,6 +8,8 @@ Two builds share this code: `main` is the tapping game; the `steer-only` branch 
 - `server/spacetimedb/` – SpacetimeDB TypeScript module: rooms, matchmaking, race ticks, items. Live database: `duckoff-rooms-gari-20260905` on maincloud.
 - `client/tests/` – integration tests that drive real clients against a local SpacetimeDB.
 
+The first player to join a room becomes its host. Everyone waits in the lobby until the host presses **Start race**; joining or closing the instructions never starts a countdown, including in practice rooms. Only the host can start a rematch. If the host leaves or goes offline, another online player becomes host.
+
 ## Develop
 
 ```bash

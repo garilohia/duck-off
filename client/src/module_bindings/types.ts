@@ -54,6 +54,7 @@ export const Race = __t.object("Race", {
   forfeited: __t.bool(),
   forfeitReason: __t.string(),
   solo: __t.bool(),
+  hostIdentity: __t.string(),
 });
 export type Race = __Infer<typeof Race>;
 

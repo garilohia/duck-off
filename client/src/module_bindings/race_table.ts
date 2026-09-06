@@ -22,4 +22,5 @@ export default __t.row({
   forfeited: __t.bool(),
   forfeitReason: __t.string().name("forfeit_reason"),
   solo: __t.bool(),
+  hostIdentity: __t.string().name("host_identity"),
 });

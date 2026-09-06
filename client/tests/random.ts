@@ -18,6 +18,9 @@ async function main(){
  assert(a.db.racePlayer.identity.find(a.identity!)?.active,'random joiner is an active racer in a waiting room');
  const b=await connect();await b.reducers.joinRandom({name:'Pal',duckIndex:1});
  assert.equal(roomOf(b),first);
+ assert.equal(b.db.race.id.find(first)?.hostIdentity,a.identity!.toHexString(),'the first random joiner hosts the room');
+ await assert.rejects(b.reducers.startRace({}),/host/);
+ assert.equal(b.db.race.id.find(first)?.status,'lobby');
  console.log(`PASS: random joiners share the live room ${first}; the row is readable as soon as the reducer resolves.`);
  const codeRoom=`R-${Date.now().toString(36).toUpperCase()}`;
  const c=await connect();await c.reducers.join({name:'Coder',duckIndex:2,room:codeRoom});assert.equal(roomOf(c),codeRoom);

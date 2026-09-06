@@ -2,7 +2,7 @@ import { schema, table, t, SenderError, type ReducerCtx, type InferSchema } from
 import { ScheduleAt, type Infer, type Identity } from 'spacetimedb';
 import { DUCK_COUNT, MAX_DUCKS, LANES, TRACK, AUTO_CRUISE, CRUISE_SPEED, STALE_AFTER_MICROS, SHIELD_TICKS, TRAP_DROP_BACK, OVERLAP, STEER_RATE, IMPACT, DRAFT_RANGE, DRAFT_BONUS, TACKLE_RANGE, travelSpeed, hitState, trackLayout } from './items';
 const player = table({public:true},{identity:t.identity().primaryKey(),room:t.string().index('btree'),name:t.string(),duckIndex:t.u8(),online:t.bool(),racesWon:t.u32(),racesPlayed:t.u32(),lastSeen:t.timestamp()});
-const race = table({public:true},{id:t.string().primaryKey(),status:t.string(),phaseTicksLeft:t.u32(),finishCounter:t.u32(),raceNumber:t.u32(),winnerName:t.string(),winnerDuckIndex:t.u8(),idleTicks:t.u32(),forfeited:t.bool(),forfeitReason:t.string(),solo:t.bool()});
+const race = table({public:true},{id:t.string().primaryKey(),status:t.string(),phaseTicksLeft:t.u32(),finishCounter:t.u32(),raceNumber:t.u32(),winnerName:t.string(),winnerDuckIndex:t.u8(),idleTicks:t.u32(),forfeited:t.bool(),forfeitReason:t.string(),solo:t.bool(),hostIdentity:t.string().default('')});
 const racePlayer = table({public:true},{identity:t.identity().primaryKey(),room:t.string().index('btree'),name:t.string(),duckIndex:t.u8(),active:t.bool(),lane:t.f64(),steer:t.f64(),pos:t.f64(),vel:t.f64(),taps:t.u32(),boostMeter:t.u32(),boostTicksLeft:t.u32(),place:t.u32(),rank:t.u32(),lastTapAt:t.u64(),drowned:t.bool(),bonks:t.u32(),seconds:t.f64()});
 const raceResult = table({public:true},{id:t.string().primaryKey(),room:t.string().index('btree'),raceNumber:t.u32(),identity:t.identity(),name:t.string(),duckIndex:t.u8(),place:t.u32(),taps:t.u32(),pos:t.f64(),drowned:t.bool(),bonks:t.u32(),seconds:t.f64()});
 const raceItem = table({public:true},{identity:t.identity().primaryKey(),room:t.string().index('btree'),held:t.string(),slowTicks:t.u32(),shieldTicks:t.u32(),turboTicks:t.u32()});
@@ -19,7 +19,18 @@ export default stdb;
 type Ctx = ReducerCtx<InferSchema<typeof stdb>>;
 type Racer = Infer<typeof racePlayer.rowType>;
 const lane = (p:Infer<typeof player.rowType>,active=true,laneIndex=2):Racer => ({identity:p.identity,room:p.room,name:p.name,duckIndex:p.duckIndex,active,lane:laneIndex,steer:0,pos:0,vel:0,taps:0,boostMeter:0,boostTicksLeft:0,place:0,rank:0,lastTapAt:0n,drowned:false,bonks:0,seconds:0});
-const emptyRace=(id:string)=>({id,status:'lobby',phaseTicksLeft:0,finishCounter:0,raceNumber:1,winnerName:'',winnerDuckIndex:0,idleTicks:0,forfeited:false,forfeitReason:'',solo:false});
+const emptyRace=(id:string)=>({id,status:'lobby',phaseTicksLeft:0,finishCounter:0,raceNumber:1,winnerName:'',winnerDuckIndex:0,idleTicks:0,forfeited:false,forfeitReason:'',solo:false,hostIdentity:''});
+// The first member hosts the room. Keep that host until they leave or go offline;
+// then choose a connected member without starting a countdown automatically.
+function refreshHost(ctx:Ctx,r:Infer<typeof race.rowType>){
+ const online=[...ctx.db.player.room.filter(r.id)].filter(p=>p.online);
+ if(online.some(p=>p.identity.toHexString()===r.hostIdentity))return r;
+ const hostIdentity=online.map(p=>p.identity.toHexString()).sort()[0]??'';
+ if(hostIdentity===r.hostIdentity)return r;
+ const updated={...r,hostIdentity};
+ ctx.db.race.id.update(updated);
+ return updated;
+}
 // A race where nobody paddles or steers for this long is forfeited: no winner, no podium.
 const IDLE_FORFEIT_TICKS=150;
 // Stable identity order resolves exact distance / crossing-time ties on every client.
@@ -74,7 +85,7 @@ function joinRoom(ctx:Ctx,name:string,duckIndex:number,room:string){
  if(!ctx.db.race.id.find(room))ctx.db.race.insert(emptyRace(room));
  const p={identity:ctx.sender,room,name:name.trim().replace(/[\u0000-\u001f]/g,'').slice(0,14)||'Duck',duckIndex,online:true,racesWon:old?.racesWon??0,racesPlayed:old?.racesPlayed??0,lastSeen:ctx.timestamp};
  if(old)ctx.db.player.identity.update(p);else{ctx.db.player.insert(p);bump(ctx,'players');}
- const r=ctx.db.race.id.find(room)!;
+ const r=refreshHost(ctx,ctx.db.race.id.find(room)!);
  // Cosmetic edits never reset progress or change the recorded finisher's name.
  if(existing?.room===room&&r.status!=='lobby')return;
  const row=lane(p,r.status==='lobby',[...ctx.db.racePlayer.room.filter(room)].length%LANES);
@@ -108,9 +119,11 @@ export const leaveRoom = stdb.reducer(ctx=>{
 });
 export const startRace=stdb.reducer(ctx=>{
  const p=ctx.db.player.identity.find(ctx.sender);
- if(!p?.online||!ctx.db.racePlayer.identity.find(ctx.sender))throw new SenderError('Join a room before starting a race.');
- const current=ctx.db.race.id.find(p.room);
- if(!current)throw new SenderError('Join a room first.');
+ if(!p?.online)throw new SenderError('Join a room before starting a race.');
+ const stored=ctx.db.race.id.find(p.room);
+ if(!stored)throw new SenderError('Join a room first.');
+ const current=refreshHost(ctx,stored);
+ if(current.hostIdentity!==ctx.sender.toHexString())throw new SenderError('Only the room host can start the race.');
  if(current.status!=='lobby'&&current.status!=='finished')return; // Concurrent start clicks are idempotent.
  for(const result of ctx.db.raceResult.room.filter(p.room))ctx.db.raceResult.id.delete(result.id);
  for(const item of ctx.db.raceItem.room.filter(p.room))ctx.db.raceItem.identity.delete(item.identity);
@@ -123,7 +136,7 @@ export const startRace=stdb.reducer(ctx=>{
  for(const f of ctx.db.raceFeature.room.filter(p.room))ctx.db.raceFeature.id.delete(f.id);
  // A fresh seed every race, so nobody can memorise where the whirlpool sits.
  for(const f of trackLayout(ctx.random.integerInRange(0,1_000_000_000),solo))ctx.db.raceFeature.insert({id:0n,room:p.room,...f});
- ctx.db.race.id.update({...emptyRace(p.room),status:'countdown',phaseTicksLeft:30,raceNumber,solo});
+ ctx.db.race.id.update({...emptyRace(p.room),status:'countdown',phaseTicksLeft:30,raceNumber,solo,hostIdentity:current.hostIdentity});
  bump(ctx,solo?'soloRuns':'races');
 });
 // Moving sideways into rivals shoves them: anyone you now overlap that you did not overlap before the move
@@ -202,7 +215,8 @@ export const tick = stdb.reducer({onSchedule:raceTick},{arg:raceTick.rowType},ct
  if(!ctx.sender.isEqual(ctx.identity))throw new SenderError('Only the river clock can tick.');
  // Ducks whose phone went quiet stop counting as here; a lobby or podium lets them go, a live race keeps their lane.
  for(const p of ctx.db.player.iter())if(p.online&&ctx.timestamp.microsSinceUnixEpoch-p.lastSeen.microsSinceUnixEpoch>STALE_AFTER_MICROS){ctx.db.player.identity.update({...p,online:false});dropOffline(ctx,p.identity,p.room);}
- for(const current of ctx.db.race.iter()){
+ for(const stored of ctx.db.race.iter()){
+  const current=refreshHost(ctx,stored);
   const room=current.id;
   // An empty waiting room can be reclaimed. Active races and results survive disconnection.
   if(current.status==='lobby'){
