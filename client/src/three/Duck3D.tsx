@@ -10,19 +10,23 @@ const materials=new Map<string,THREE.MeshPhysicalMaterial>();
 function material(color:string){if(!materials.has(color))materials.set(color,new THREE.MeshPhysicalMaterial({color,roughness:.29,clearcoat:.55,clearcoatRoughness:.22}));return materials.get(color)!;}
 function Ball({at,scale,color,rotation=[0,0,0]}:{at:V;scale:V;color:string;rotation?:V}){return <mesh position={at} scale={scale} rotation={rotation} geometry={sphere} material={material(color)}/>}
 const SILVER='#dfe7ef',STEEL='#b8c4d0',WOOD='#8a5a30',LEATHER='#b0743c',TOY_BLUE='#4ea8ff';
-export default function Duck3D({duckIndex=0,speed=0,taps=0,preview=false,spin}:{duckIndex?:number;speed?:number;taps?:number;preview?:boolean;spin?:RefObject<Spin>}){
+export default function Duck3D({duckIndex=0,speed=0,taps=0,preview=false,spin,lean}:{duckIndex?:number;speed?:number;taps?:number;preview?:boolean;spin?:RefObject<Spin>;lean?:RefObject<number>}){
  const group=useRef<THREE.Group>(null),eyes=useRef<THREE.Group>(null),wingL=useRef<THREE.Group>(null),wingR=useRef<THREE.Group>(null);
- const last=useRef(taps),hop=useRef(0),color=DUCK_COLORS[duckIndex]??DUCK_COLORS[0];
+ const last=useRef(taps),hop=useRef(0),roll=useRef(0),pace=useRef(0),color=DUCK_COLORS[duckIndex]??DUCK_COLORS[0];
  useFrame(({clock},dt)=>{
   const time=clock.elapsedTime;
-  if(last.current!==taps){last.current=taps;hop.current=1;}
-  hop.current=Math.max(0,hop.current-dt*4);
+  // Taps give a soft hop that blends into the last one instead of restarting it; pace eases toward the real speed.
+  if(last.current!==taps){last.current=taps;hop.current=Math.min(1,hop.current*.4+.75);}
+  hop.current=Math.max(0,hop.current-dt*3.2);
+  pace.current=THREE.MathUtils.damp(pace.current,speed,6,dt);
+  roll.current=THREE.MathUtils.damp(roll.current,lean?.current??0,8,dt);
   let twirl=0;
   if(spin?.current){const s=spin.current;if(!s.dragging){s.angle+=s.velocity*dt;s.velocity*=Math.exp(-2.6*dt);if(Math.abs(s.velocity)<.02)s.velocity=0;}twirl=s.angle;}
-  if(group.current){group.current.position.y=.1+Math.sin(time*2.4+duckIndex)*.045+Math.sin(hop.current*Math.PI)*.17;group.current.rotation.z=Math.sin(time*3+duckIndex)*(.025+speed*.00015);group.current.rotation.y=(preview?-.12:0)+Math.sin(time*1.7)*.055+twirl;group.current.scale.set(1+hop.current*.06,1-hop.current*.05,1+hop.current*.06);}
+  if(group.current){const bob=1+pace.current/260;group.current.position.y=.1+Math.sin(time*2.4*bob+duckIndex)*.045+Math.sin(hop.current*Math.PI)*.15;group.current.rotation.z=Math.sin(time*3+duckIndex)*(.025+pace.current*.00015)+roll.current;group.current.rotation.x=-pace.current*.0009-hop.current*.05;group.current.rotation.y=(preview?-.12:0)+Math.sin(time*1.7)*.055+twirl;group.current.scale.set(1+hop.current*.05,1-hop.current*.04,1+hop.current*.05);}
   if(eyes.current)eyes.current.scale.y=(time+duckIndex*.43)%4.8<.13?.08:1;
-  if(wingL.current)wingL.current.rotation.z=-.15-Math.sin(time*6)*.06-hop.current*.3;
-  if(wingR.current)wingR.current.rotation.z=.15+Math.sin(time*6)*.06+hop.current*.3;
+  const flap=Math.sin(time*(6+pace.current*.03))*(.06+pace.current*.0004);
+  if(wingL.current)wingL.current.rotation.z=-.15-flap-hop.current*.3;
+  if(wingR.current)wingR.current.rotation.z=.15+flap+hop.current*.3;
  });
  return <group ref={group}>
   <Ball at={[0,.6,.13]} scale={[.89,.68,1.0]} color={color}/>

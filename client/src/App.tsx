@@ -1,4 +1,4 @@
-import {useEffect,useMemo,useState} from 'react';
+import {useEffect,useMemo,useRef,useState} from 'react';
 import {SpacetimeDBProvider,useSpacetimeDB,useTable,useReducer} from 'spacetimedb/react';
 import {Identity} from 'spacetimedb';
 import {DbConnection,tables,reducers} from './module_bindings';
@@ -48,10 +48,13 @@ function Game(){
   if(!assignment)throw new Error('Your room is still connecting. Please try again.');
   finishJoin(name,duckIndex,assignment.room,false);
  };
+ // If our room's row vanished (the room was tidied away while this tab slept), quietly open it again.
+ const rejoining=useRef(false);
+ useEffect(()=>{if(!entered||!raceReady||races[0]||rejoining.current)return;rejoining.current=true;const name=localStorage.getItem('duckoff_name')||'Duck',duckIndex=Number(localStorage.getItem('duckoff_duck'))||0;void join({name,duckIndex,room}).catch(()=>{}).finally(()=>{rejoining.current=false})},[entered,raceReady,races,room,join]);
  // Main menu: leave the results behind and start over with a clean entry screen (random matching by default).
  const leave=()=>{void leaveRoom().catch(()=>{});setEntered(false);setViaCode(false);setLinkedRoom('');setError('');const url=new URL(location.href);url.searchParams.delete('room');history.replaceState(null,'',url);};
  // Practice alone: a private room that starts straight away, with a denser obstacle course.
- const soloRun=async(name:string,duckIndex:number)=>{const nextRoom=`SOLO-${Math.floor(Math.random()*36**5).toString(36).toUpperCase().padStart(5,'0')}`;await join({name,duckIndex,room:nextRoom});finishJoin(name,duckIndex,nextRoom,false);await start();};
+ const soloRun=async(name:string,duckIndex:number)=>{const nextRoom=`SOLO-${Math.floor(Math.random()*36**5).toString(36).toUpperCase().padStart(5,'0')}`;await join({name,duckIndex,room:nextRoom});finishJoin(name,duckIndex,nextRoom,false);};
  const friendly=(e:unknown,fallback:string)=>e instanceof Error&&e.message?e.message:fallback;
  useGameTools({connected:isActive,race:races[0],items:items.map(i=>({...i,identity:i.identity.toHexString()})),features:features.map(f=>({kind:f.kind,lane:f.lane,pos:f.pos})),players:players.map(p=>({name:p.name,active:p.active,lane:p.lane,pos:p.pos,place:p.place,rank:p.rank,taps:p.taps}))},(name,index)=>joinGame(name,index,room,viaCode),()=>tap(),()=>start(),()=>useItem(),direction=>switchLane({direction}),amount=>steer({amount}));
  if(!isActive||!identity||!selfReady||!raceReady||!playersReady||!legendsReady)return <main className="splash"><div className="splash-duck"><RubberDuck size={112} bob/></div><h1>{connectionError||slow?'A little ripple in the connection':'Filling the little lagoon…'}</h1><p>{connectionError||slow?'Your duck is safe. Check your connection and try again.':'Getting the water just right for you.'}</p>{(connectionError||slow)&&<button className="primary" onClick={()=>location.reload()}>Try again ↻</button>}</main>;

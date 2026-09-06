@@ -155,10 +155,10 @@ export const tap = stdb.reducer(ctx=>{
  if(AUTO_CRUISE)return; // Ducks swim by themselves in steer-only mode.
  const p=ctx.db.racePlayer.identity.find(ctx.sender);if(!p)return;const r=ctx.db.race.id.find(p.room);
  if(r?.status!=='racing'||!p.active||p.place||p.drowned)return;
- const now=ctx.timestamp.microsSinceUnixEpoch;if(now-p.lastTapAt<40_000n)return;
+ const now=ctx.timestamp.microsSinceUnixEpoch;if(now-p.lastTapAt<30_000n)return;
  const leader=Math.max(0,...[...ctx.db.racePlayer.room.filter(p.room)].filter(x=>x.active).map(x=>x.pos));
  let meter=p.boostMeter+1,boost=p.boostTicksLeft;if(meter>=20){meter=0;boost=20;}
- const impulse=18*(1+0.35*Math.max(0,leader-p.pos)/TRACK)*(boost>0?1.5:1);
+ const impulse=24*(1+0.35*Math.max(0,leader-p.pos)/TRACK)*(boost>0?1.5:1);
  ctx.db.racePlayer.identity.update({...p,taps:p.taps+1,boostMeter:meter,boostTicksLeft:boost,vel:Math.min(260,p.vel+impulse),lastTapAt:now});
  if(r.idleTicks)ctx.db.race.id.update({...r,idleTicks:0});
 });
@@ -253,7 +253,7 @@ export const tick = stdb.reducer({onSchedule:raceTick},{arg:raceTick.rowType},ct
      // Anything in this lane between last tick's position and this one is crossed now.
      if(!p.place&&!p.drowned)for(const f of features.filter(f=>Math.abs(f.lane-p.lane)<OVERLAP&&f.pos>from&&f.pos<=p.pos).sort((a,b)=>a.pos-b.pos)){
       if(f.kind==='trap'){ctx.db.raceFeature.id.delete(f.id);const before=state.shieldTicks;state={...state,...hitState(state,'trap')};if(!before)p.bonks++;}
-      else if(f.kind==='buoy'){if(!state.held)state.held=f.item;} // You get exactly the toy you saw floating there.
+      else if(f.kind==='buoy'){if(!state.held){state.held=f.item;ctx.db.raceFeature.id.delete(f.id);features.splice(features.indexOf(f),1);}} // You get exactly the toy you saw, and it is gone from the river.
       else if(f.kind==='rapids'){p.vel=Math.min(260,p.vel+45);p.boostTicksLeft=Math.max(p.boostTicksLeft,15);}
       else if(f.kind==='whirlpool'){if(state.shieldTicks>0)state.shieldTicks=0;else{p.drowned=true;p.vel=0;p.boostTicksLeft=0;state.held='';break;}}
       else{const before=state.shieldTicks;state={...state,...hitState(state,f.kind)};if(!before){p.vel*=IMPACT[f.kind]?.keep??.5;p.bonks++;}}

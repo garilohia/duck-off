@@ -53,8 +53,8 @@ async function connect(name:string,selectedRoom=room){return new Promise<DbConne
 async function steer(c:DbConnection,lane:number){const row=()=>c.db.racePlayer.identity.find(c.identity!)!;if(row().place||row().drowned)return;for(let i=0;i<8&&row().lane!==lane;i++){const before=row().lane;await c.reducers.switchLane({direction:lane>before?1:-1});await until(()=>row().lane!==before,5000);}assert.equal(row().lane,lane);}
 
 async function main(){
- // Eleven racers plus one spectator fill the room to its twelve-duck cap.
- const racers=await Promise.all(Array.from({length:11},(_,i)=>connect(`Toy Duck ${i+1}`)));
+ // Eight racers; toys are one-per-pickup, so only four of them get one across the first two buoy segments.
+ const racers=await Promise.all(Array.from({length:8},(_,i)=>connect(`Toy Duck ${i+1}`)));
  const first=racers[0],state=(c:DbConnection)=>first.db.raceItem.identity.find(c.identity!)!;
  const row=(c:DbConnection)=>first.db.racePlayer.identity.find(c.identity!)!;
  const outsider=await connect('Separate duck',room+'-B');
@@ -78,9 +78,9 @@ async function main(){
   await c.reducers.steer({amount:1});await until(()=>lane()>from+STEER_RATE*.9,4000);assert(lane()<=LANES-1);
   await c.reducers.steer({amount:0});await until(()=>c.db.racePlayer.identity.find(c.identity!)!.steer===0,4000);const stopped=lane();await sleep(400);assert.equal(lane(),stopped,'no drift once the push is released');
   console.log('PASS: steering slides a duck fluidly between lanes and stops when released.');}
- // The first six ducks take the two toys at segment 0; the other five keep to empty water and take segment 2's pair.
- const early=racers.slice(0,6),late=racers.slice(6);
- await Promise.all(racers.map((c,i)=>steer(c,i<6?buoys[i%2].lane:emptyLanes[i%emptyLanes.length])));
+ // Ducks 0-1 line up on segment 0's toys, 2-3 on segment 2's, the rest in empty water.
+ const early=racers.slice(0,2),second=racers.slice(2,4),late=racers.slice(4);
+ await Promise.all(racers.map((c,i)=>steer(c,i<2?buoys[i%2].lane:i<4?buoys2[i%2].lane:emptyLanes[i%emptyLanes.length])));
  await until(()=>first.db.race.id.find(room)?.status==='racing');
  // Tackle: hopping into the lane beside a rival at the start line shoves everyone within reach.
  const laneA=buoys[0].lane,tackler=early.find(c=>row(c).lane!==laneA)!,targets=racers.filter(c=>row(c).lane===laneA);
@@ -88,6 +88,7 @@ async function main(){
  await until(()=>targets.every(c=>state(c).slowTicks>0));
  assert.equal(state(tackler).slowTicks,0,'the tackler is not slowed, only nudged');
  console.log('PASS: barging into a lane shoves the rivals beside you.');
+ await steer(tackler,buoys[1].lane); // back to its own toy
  await until(()=>racers.every(c=>state(c).slowTicks===0));
  const spectator=await connect('Spectator');await assert.rejects(spectator.reducers.useItem({}));
  await spectator.reducers.switchLane({direction:1});assert.equal(spectator.db.racePlayer.identity.find(spectator.identity!)!.active,false);
@@ -97,14 +98,16 @@ async function main(){
  const paddling=(who=racers)=>{timer=setInterval(()=>{for(const c of who)pending.push(c.reducers.tap({}));},65)};
  const pause=async()=>{if(timer)clearInterval(timer);timer=undefined;await Promise.all(pending);pending=[]};
  try{
-  paddling();await until(()=>early.every(c=>!!state(c)?.held));await pause();
+  // The first pair takes segment 0's toys and the toys are gone; a duck following through the same lane gets nothing.
+  paddling(early);await until(()=>early.every(c=>!!state(c)?.held));await pause();
   assert.deepEqual(new Set(early.map(c=>state(c).held)),new Set(buoys.map(b=>b.item)),'you get exactly the toy that floated there');
-  assert(late.every(c=>!state(c).held),'ducks in empty water pick up nothing');
-  await Promise.all(late.map((c,i)=>steer(c,buoys2[i%2].lane)));
-  paddling(late);await until(()=>late.every(c=>!!state(c)?.held));await pause();
-  assert.deepEqual(new Set(late.map(c=>state(c).held)),new Set(buoys2.map(b=>b.item)));
-  assert.deepEqual(new Set(racers.map(c=>state(c).held)),new Set(['bomb','bubble','turbo','shield']),'two buoy segments together hand out all four toys');
-  console.log('PASS: 11 racers pick up exactly the toys they steer into, all four kinds across two segments; spectators cannot use items or hop lanes.');
+  assert(buoys.every(b=>!first.db.raceFeature.id.find(b.id)),'a taken toy is gone from the river');
+  const follower=late[0];await steer(follower,buoys[0].lane);paddling([follower]);await until(()=>row(follower).pos>buoys[0].pos+10);await pause();
+  assert.equal(state(follower).held,'','nothing left to pick up where a toy was taken');await steer(follower,emptyLanes[0]);
+  paddling(second);await until(()=>second.every(c=>!!state(c)?.held));await pause();
+  assert.deepEqual(new Set(second.map(c=>state(c).held)),new Set(buoys2.map(b=>b.item)));
+  assert.deepEqual(new Set([...early,...second].map(c=>state(c).held)),new Set(['bomb','bubble','turbo','shield']),'two buoy segments together hand out all four toys');
+  console.log('PASS: toys are picked up exactly as shown and vanish once taken; all four kinds across two segments; spectators cannot use items or hop lanes.');
   const shields=racers.filter(c=>state(c).held==='shield'),turbo=racers.find(c=>state(c).held==='turbo')!;
   const keeper=shields.pop()!; // keeps the shield for the obstacle test below
   await Promise.all(shields.map(c=>c.reducers.useItem({})));
@@ -182,9 +185,9 @@ async function main(){
   console.log('PASS: rapids whoosh the duck that rides them.');
   paddling();await until(()=>first.db.race.id.find(room)?.status==='finished');await pause();
   const results=[...first.db.raceResult.iter()].filter(r=>r.room===room).sort((a,b)=>a.place-b.place);
-  assert.deepEqual(results.map(r=>r.place),Array.from({length:11},(_,i)=>i+1));
-  assert.equal(results[10].identity.toHexString(),sinker.identity!.toHexString(),'the drowned duck finishes last');assert.equal(results[10].drowned,true);
-  for(const c of racers){await until(()=>[...c.db.raceResult.iter()].filter(r=>r.room===room).length===11);assert.deepEqual([...c.db.raceResult.iter()].filter(r=>r.room===room).sort((a,b)=>a.place-b.place).map(r=>[r.identity.toHexString(),r.place]),results.map(r=>[r.identity.toHexString(),r.place]));}
+  assert.deepEqual(results.map(r=>r.place),Array.from({length:8},(_,i)=>i+1));
+  assert.equal(results[7].identity.toHexString(),sinker.identity!.toHexString(),'the drowned duck finishes last');assert.equal(results[7].drowned,true);
+  for(const c of racers){await until(()=>[...c.db.raceResult.iter()].filter(r=>r.room===room).length===8);assert.deepEqual([...c.db.raceResult.iter()].filter(r=>r.room===room).sort((a,b)=>a.place-b.place).map(r=>[r.identity.toHexString(),r.place]),results.map(r=>[r.identity.toHexString(),r.place]));}
   await assert.rejects(first.reducers.useItem({}));
   await first.reducers.startRace({});
   await until(()=>first.db.race.id.find(room)?.status==='countdown');
@@ -192,7 +195,7 @@ async function main(){
   assert.equal([...first.db.itemEffect.iter()].filter(e=>e.room===room).length,0);
   await until(()=>features().length>=10&&features().every(f=>f.seq>=0));
   assert.equal(features().filter(f=>f.kind==='whirlpool').length,1,'a rematch lays out a fresh river with one whirlpool');
-  console.log('PASS: all 11 clients agree on item-race results; rematches clear every item and effect and lay out a fresh river.');
+  console.log('PASS: all 8 clients agree on item-race results; rematches clear every item and effect and lay out a fresh river.');
   // Edge case: the whirlpool takes the only duck still swimming and nobody crossed, so the river wins and there is no podium.
   const solo=await connect('Solo swimmer',room+'-C');
   await solo.reducers.startRace({});await until(()=>solo.db.race.id.find(room+'-C')?.status==='countdown');

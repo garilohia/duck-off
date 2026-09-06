@@ -20,19 +20,53 @@ function Splashes({taps,speed}:{taps:number;speed:number}){
  });
  return <><instancedMesh ref={ref} args={[dropletGeometry,undefined,10]} frustumCulled={false}><meshBasicMaterial color={PAL.foam}/></instancedMesh><mesh ref={ring} rotation={[-Math.PI/2,0,0]} position={[0,.07,0]}><ringGeometry args={[1.05,1.09,32]}/><meshBasicMaterial color={PAL.foam} transparent opacity={.4} depthWrite={false}/></mesh></>;
 }
-// Ducks glide between lanes and along the river's bends; a big jump (rematch) snaps instead of sliding.
+// Smooth motion between server ticks (10 Hz): each duck's forward speed and sideways drift are estimated from
+// the last updates and extrapolated a little ahead, then the rendered position eases toward that prediction.
+// The camera reads the same prediction, so the whole scene glides instead of stepping.
+type Smooth={pos:number;lane:number;serverPos:number;serverLane:number;at:number;vPos:number;vLane:number};
+const smooth=new Map<string,Smooth>();
+const LOOKAHEAD=.25;
+function predict(id:string,p:RacePlayer,now:number,lobby:boolean):Smooth{
+ let s=smooth.get(id);
+ if(!s){s={pos:p.pos,lane:p.lane,serverPos:p.pos,serverLane:p.lane,at:now,vPos:0,vLane:0};smooth.set(id,s);}
+ if(p.pos!==s.serverPos||p.lane!==s.serverLane){
+  const dt=Math.max(.02,now-s.at);
+  const jump=Math.abs(p.pos-s.serverPos)>350;
+  s.vPos=jump?0:THREE.MathUtils.lerp(s.vPos,(p.pos-s.serverPos)/dt,.6);
+  s.vLane=jump?0:THREE.MathUtils.lerp(s.vLane,(p.lane-s.serverLane)/dt,.6);
+  if(jump){s.pos=p.pos;s.lane=p.lane;}
+  s.serverPos=p.pos;s.serverLane=p.lane;s.at=now;
+ }
+ const age=Math.min(now-s.at,LOOKAHEAD),still=p.place||p.drowned||lobby;
+ const targetPos=still?p.pos:Math.max(p.pos,p.pos+s.vPos*age),targetLane=THREE.MathUtils.clamp(still?p.lane:p.lane+s.vLane*age,0,4);
+ return {...s,pos:targetPos,lane:targetLane};
+}
 function Racer({p,mine,x,lobby,item}:{p:RacePlayer;mine:boolean;x:number;lobby:boolean;item?:RaceItem}){
- const ref=useRef<THREE.Group>(null),across=useRef(x);
- useFrame(({clock},dt)=>{if(!ref.current)return;const z=lobby?0:zFor(p.pos);across.current=THREE.MathUtils.damp(across.current,x,7,dt);const target=place(across.current,z);const snap=Math.abs(ref.current.position.z-target.z)>35;ref.current.position.x=snap?target.x:THREE.MathUtils.damp(ref.current.position.x,target.x,15,dt);ref.current.position.z=snap?target.z:THREE.MathUtils.damp(ref.current.position.z,target.z,15,dt);ref.current.rotation.y=target.heading;
+ const ref=useRef<THREE.Group>(null),shown=useRef({pos:p.pos,lane:lobby?x:p.lane}),id=p.identity.toHexString(),lean=useRef(0),boostRing=useRef<THREE.Mesh>(null);
+ useFrame(({clock},dt)=>{if(!ref.current)return;
+  const now=clock.elapsedTime,guess=predict(id,p,now,lobby);
+  const wantPos=lobby?0:guess.pos,wantLane=lobby?x:laneX(guess.lane);
+  const snap=Math.abs(shown.current.pos-wantPos)>350;
+  shown.current.pos=snap?wantPos:THREE.MathUtils.damp(shown.current.pos,wantPos,18,dt);
+  shown.current.lane=snap?wantLane:THREE.MathUtils.damp(shown.current.lane,wantLane,12,dt);
+  const target=place(shown.current.lane,lobby?0:zFor(shown.current.pos));
+  ref.current.position.x=target.x;ref.current.position.z=target.z;ref.current.rotation.y=target.heading+(lobby?0:THREE.MathUtils.clamp(-guess.vLane*.18,-.3,.3));
+  // Lean into the turn (roll), and let the boost ring breathe.
+  lean.current=lobby?0:THREE.MathUtils.clamp(guess.vLane*.22,-.32,.32);
+  if(boostRing.current){const pulse=1+Math.sin(now*9)*.08;boostRing.current.scale.set(pulse,pulse,1);(boostRing.current.material as THREE.MeshBasicMaterial).opacity=.75+Math.sin(now*9)*.2;}
   // A drowned duck spins down under the surface and bobs there, upside down and unbothered.
-  const sunk=p.drowned?-1.35+Math.sin(clock.elapsedTime*2)*.08:0;ref.current.position.y=THREE.MathUtils.damp(ref.current.position.y,sunk,3,dt);ref.current.rotation.x=THREE.MathUtils.damp(ref.current.rotation.x,p.drowned?Math.PI:0,2.5,dt);if(p.drowned)ref.current.rotation.y+=clock.elapsedTime*.8;});
- const start=place(x,lobby?0:zFor(p.pos));
- return <group ref={ref} position={[start.x,0,start.z]} rotation={[0,start.heading,0]}><Duck3D duckIndex={p.duckIndex} speed={p.vel} taps={p.taps}/><mesh rotation={[-Math.PI/2,0,0]} position={[0,.015,.1]} scale={[1,1.4,1]}><circleGeometry args={[.85,24]}/><meshBasicMaterial color={PAL.deep} transparent opacity={.16} depthWrite={false}/></mesh><Splashes taps={p.taps} speed={p.vel}/><DuckAura item={item}/>{p.boostTicksLeft>0&&<mesh rotation={[-Math.PI/2,0,0]} position={[0,.04,0]}><ringGeometry args={[1.1,1.2,32]}/><meshBasicMaterial color={PAL.yellow}/></mesh>}<Html position={[0,p.drowned?4.4:3.05,0]} center distanceFactor={12} zIndexRange={[2,1]}><div className={`name-tag ${mine?'you':''}`}>{p.drowned?'glub… ':''}{mine?'you ♡':p.name}</div></Html></group>;
+  const sunk=p.drowned?-1.35+Math.sin(now*2)*.08:0;ref.current.position.y=THREE.MathUtils.damp(ref.current.position.y,sunk,3,dt);ref.current.rotation.x=THREE.MathUtils.damp(ref.current.rotation.x,p.drowned?Math.PI:0,2.5,dt);if(p.drowned)ref.current.rotation.y+=now*.8;});
+ const start=place(lobby?x:laneX(p.lane),lobby?0:zFor(p.pos));
+ return <group ref={ref} position={[start.x,0,start.z]} rotation={[0,start.heading,0]}><Duck3D duckIndex={p.duckIndex} speed={p.vel} taps={p.taps} lean={lean}/><mesh rotation={[-Math.PI/2,0,0]} position={[0,.015,.1]} scale={[1,1.4,1]}><circleGeometry args={[.85,24]}/><meshBasicMaterial color={PAL.deep} transparent opacity={.16} depthWrite={false}/></mesh><Splashes taps={p.taps} speed={p.vel}/><DuckAura item={item}/>{p.boostTicksLeft>0&&<mesh ref={boostRing} rotation={[-Math.PI/2,0,0]} position={[0,.04,0]}><ringGeometry args={[1.1,1.22,32]}/><meshBasicMaterial color={PAL.yellow} transparent depthWrite={false}/></mesh>}<Html position={[0,p.drowned?4.4:3.05,0]} center distanceFactor={12} zIndexRange={[2,1]}><div className={`name-tag ${mine?'you':''}`}>{p.drowned?'glub… ':''}{mine?'you ♡':p.name}</div></Html></group>;
 }
 function Camera({target,x,lobby}:{target?:RacePlayer;x:number;lobby:boolean}){
- const initialized=useRef(false),destination=useMemo(()=>new THREE.Vector3(),[]),focus=useMemo(()=>new THREE.Vector3(),[]),aim=useMemo(()=>new THREE.Vector3(),[]),across=useRef(x);
- useFrame(({camera,size},dt)=>{const portrait=size.width<size.height,z=lobby?0:zFor(target?.pos??0);
-  across.current=THREE.MathUtils.damp(across.current,x,5,dt);
+ const initialized=useRef(false),destination=useMemo(()=>new THREE.Vector3(),[]),focus=useMemo(()=>new THREE.Vector3(),[]),aim=useMemo(()=>new THREE.Vector3(),[]),across=useRef(x),along=useRef(target?.pos??0);
+ useFrame(({camera,size,clock},dt)=>{const portrait=size.width<size.height;
+  // Follow the predicted, eased position rather than the raw 10 Hz server value.
+  const guess=target?predict(target.identity.toHexString(),target,clock.elapsedTime,lobby):undefined;
+  along.current=Math.abs(along.current-(guess?.pos??0))>350?(guess?.pos??0):THREE.MathUtils.damp(along.current,guess?.pos??0,18,dt);
+  const z=lobby?0:zFor(along.current);
+  across.current=THREE.MathUtils.damp(across.current,lobby?x:laneX(guess?.lane??2),6,dt);
   // Follow from behind along the river, so the bends, rivals, buoys and rapids are visible ahead.
   // Narrow portrait screens follow the lane fully so an edge lane is never cut off; wide screens sit a little off-axis.
   const follow=portrait?1:.75,side=portrait?.6:1.6;

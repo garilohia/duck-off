@@ -51,7 +51,7 @@ export const TACKLE_RANGE = 45;
 // ...and this close across it. Lanes are continuous (0..LANES-1); anything within half a lane overlaps.
 export const OVERLAP = .55;
 // How far across the river a duck moves per tick at full steering.
-export const STEER_RATE = .32;
+export const STEER_RATE = .22;
 
 // The river layout for one race, ten segments long. Even segments hold a pair of "?" buoys in two
 // lanes only; odd segments alternate obstacles (never more than two of the five lanes) with bands of
