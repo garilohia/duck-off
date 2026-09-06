@@ -2,6 +2,8 @@ import type { Metadata, Viewport } from 'next';
 import localFont from 'next/font/local';
 import { site } from '../site';
 import './globals.css';
+import { Analytics } from '@vercel/analytics/next';
+import { SpeedInsights } from '@vercel/speed-insights/next';
 const fredoka = localFont({ src: './fonts/Fredoka.ttf', variable: '--font-fredoka', weight: '400 700', display: 'swap' });
 export const metadata: Metadata = {
   metadataBase: new URL(site.url),
@@ -59,7 +61,11 @@ export const viewport: Viewport = {
 export default function Layout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body className={fredoka.variable}>{children}</body>
+      <body className={fredoka.variable}>
+        {children}
+        <Analytics />
+        <SpeedInsights />
+      </body>
     </html>
   );
 }
